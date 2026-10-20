@@ -14,7 +14,9 @@ class CookingBatchNotification extends Notification
         public string $status,
         public int $quantity,
         public int $waitingOrderCount,
-        public array $waitingOrderIds
+        public array $waitingOrderIds,
+        public string $startedAt,
+        public int $durationMinutes
     ) {}
 
     public function via(object $notifiable): array
@@ -27,16 +29,6 @@ class CookingBatchNotification extends Notification
         $state = $this->status === 'ready'
             ? 'is ready for service'
             : 'is being cooked';
-        $waitingOrders = $this->waitingOrderCount === 1
-            ? '1 fresh-chicken order is waiting'
-            : $this->waitingOrderCount.' fresh-chicken orders are waiting';
-        $orderNumbers = collect($this->waitingOrderIds)
-            ->take(5)
-            ->map(fn (int $orderId): string => '#'.$orderId)
-            ->implode(', ');
-        $additionalOrders = $this->waitingOrderCount > 5
-            ? ' and '.($this->waitingOrderCount - 5).' more'
-            : '';
 
         return [
             'batch_id' => $this->batchId,
@@ -45,8 +37,9 @@ class CookingBatchNotification extends Notification
             'quantity' => $this->quantity,
             'waiting_order_count' => $this->waitingOrderCount,
             'waiting_order_ids' => $this->waitingOrderIds,
-            'message' => 'Fresh chicken batch ('.$this->quantity.' pcs) '.$state.'. '.$waitingOrders
-                .' ('.$orderNumbers.$additionalOrders.').',
+            'started_at' => $this->startedAt,
+            'duration_minutes' => $this->durationMinutes,
+            'message' => 'Fresh chicken batch ('.$this->quantity.' pcs) '.$state.'.',
         ];
     }
 }

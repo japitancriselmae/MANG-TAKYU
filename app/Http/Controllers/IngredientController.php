@@ -10,9 +10,7 @@ class IngredientController extends Controller
 {
     public function index()
     {
-        $ingredients = Ingredient::orderBy('ingredient_name')->get();
-
-        return view('ingredients.index', compact('ingredients'));
+        return redirect()->route('inventories.index', ['tab' => 'stock']);
     }
 
     public function create()
@@ -48,7 +46,7 @@ class IngredientController extends Controller
         Ingredient::create($validated);
 
         return redirect()
-            ->route('ingredients.index')
+            ->route('inventories.index', ['tab' => 'stock'])
             ->with('success', 'Ingredient created successfully.');
     }
 
@@ -97,7 +95,7 @@ class IngredientController extends Controller
         $ingredient->update($validated);
 
         return redirect()
-            ->route('ingredients.index')
+            ->route('inventories.index', ['tab' => 'stock'])
             ->with('success', 'Ingredient updated successfully.');
     }
 
@@ -124,7 +122,7 @@ class IngredientController extends Controller
         $ingredient->delete();
 
         return redirect()
-            ->route('ingredients.index')
+            ->route('inventories.index', ['tab' => 'stock'])
             ->with('success', 'Ingredient deleted successfully.');
     }
 }

@@ -43,6 +43,19 @@
                     {{ \Carbon\Carbon::parse($payment->payment_date)->format('M d, Y h:i A') }}
                 </span>
             </div>
+            @if ($payment->payment_method === 'GCash')
+                <div class="border-t border-slate-100 pt-4">
+                    <span class="mb-2 block text-sm font-semibold text-slate-700">GCash payment screenshot</span>
+                    @if ($payment->gcash_proof_path)
+                        <a href="{{ route('payments.proof', $payment) }}" target="_blank" rel="noopener">
+                            <img src="{{ route('payments.proof', $payment) }}" alt="GCash payment proof"
+                                class="max-h-72 rounded-xl border border-slate-200 object-contain">
+                        </a>
+                    @else
+                        <p class="text-sm text-slate-400">No screenshot attached.</p>
+                    @endif
+                </div>
+            @endif
         </div>
     </div>
 
@@ -128,10 +141,6 @@
         <a href="{{ route('payments.index') }}"
            class="px-5 py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition">
             ← Payments
-        </a>
-        <a href="{{ route('orders.show', $payment->order) }}"
-           class="px-5 py-3 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-semibold shadow-lg shadow-red-500/20 transition">
-            View Order
         </a>
     </div>
 </div>

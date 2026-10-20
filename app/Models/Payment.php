@@ -15,6 +15,7 @@ class Payment extends Model
         'amount_paid',
         'change_amount',
         'payment_date',
+        'gcash_proof_path',
     ];
 
     protected $casts = [

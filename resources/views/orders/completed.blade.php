@@ -44,18 +44,7 @@
         </p>
 
         <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
-            <span class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-1.5 text-sm font-bold {{ $badge }}">
-                {{ $order->status }}
-            </span>
-            @if ($order->is_fresh_chicken)
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-[#F5A623]/20 px-3 py-1.5 text-xs font-bold text-[#b5790b]">
-                    🍗 Freshly Cooked Chicken
-                </span>
-            @else
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-bold text-emerald-700">
-                    ✅ Available Cooked Chicken
-                </span>
-            @endif
+            <span class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-1.5 text-sm font-bold {{ $badge }}">{{ $order->status }}</span>
         </div>
     </div>
 
@@ -116,12 +105,6 @@
             <div class="flex justify-between">
                 <span class="text-slate-500">Service type</span>
                 <span class="font-semibold text-slate-800">{{ $order->order_type }}</span>
-            </div>
-            <div class="flex justify-between">
-                <span class="text-slate-500">Chicken preparation</span>
-                <span class="font-semibold text-slate-800">
-                    {{ $order->is_fresh_chicken ? 'Freshly Cooked Chicken' : 'Available Cooked Chicken' }}
-                </span>
             </div>
             @if ($payment)
                 <div class="flex justify-between">

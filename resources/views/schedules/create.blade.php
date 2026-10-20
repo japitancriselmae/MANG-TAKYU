@@ -27,13 +27,23 @@
                 </select>
             </div>
 
-            <div>
-                <label for="schedule_date" class="block text-sm font-semibold text-slate-700 mb-2">Date</label>
-                <input type="date" name="schedule_date" id="schedule_date" required
-                       value="{{ old('schedule_date') }}"
-                       class="w-full px-4 py-3 border border-slate-200 rounded-xl
-                              focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                    <label for="start_date" class="block text-sm font-semibold text-slate-700 mb-2">From Date</label>
+                    <input type="date" name="start_date" id="start_date" required
+                           value="{{ old('start_date') }}"
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl
+                                  focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                </div>
+                <div>
+                    <label for="end_date" class="block text-sm font-semibold text-slate-700 mb-2">To Date</label>
+                    <input type="date" name="end_date" id="end_date" required
+                           value="{{ old('end_date') }}"
+                           class="w-full px-4 py-3 border border-slate-200 rounded-xl
+                                  focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                </div>
             </div>
+            <p class="-mt-3 text-xs text-slate-500">Both dates are included. The same shift will be scheduled each day, up to 31 days.</p>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>

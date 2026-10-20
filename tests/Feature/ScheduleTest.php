@@ -44,6 +44,10 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)->get('/schedules');
 
         $response->assertStatus(200);
+        $this->actingAs($user)
+            ->get('/schedules/create')
+            ->assertSee('From Date')
+            ->assertSee('To Date');
     }
 
     public function test_manager_can_create_schedule(): void
@@ -53,7 +57,8 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->post('/schedules', [
                 'employee_id' => $employee->employee_id,
-                'schedule_date' => '2026-09-18',
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
                 'start_time' => '08:00',
                 'end_time' => '17:00',
                 'status' => 'Active',
@@ -162,7 +167,8 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->post('/schedules', [
                 'employee_id' => $employee->employee_id,
-                'schedule_date' => '2026-09-18',
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
                 'start_time' => '17:00',
                 'end_time' => '08:00',
                 'status' => 'Active',
@@ -214,7 +220,8 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->post('/schedules', [
                 'employee_id' => $employee->employee_id,
-                'schedule_date' => '2026-09-18',
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
                 'start_time' => '10:00',
                 'end_time' => '15:00',
                 'status' => 'Active',
@@ -240,7 +247,8 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->post('/schedules', [
                 'employee_id' => $employee->employee_id,
-                'schedule_date' => '2026-09-18',
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
                 'start_time' => '13:00',
                 'end_time' => '17:00',
                 'status' => 'Active',
@@ -304,7 +312,8 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->post('/schedules', [
                 'employee_id' => $employee->employee_id,
-                'schedule_date' => '2026-09-18',
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
                 'start_time' => '10:00',
                 'end_time' => '15:00',
                 'status' => 'Active',
@@ -313,5 +322,98 @@ class ScheduleTest extends TestCase
         $response->assertRedirect('/schedules');
 
         $this->assertDatabaseCount('schedules', 2);
+    }
+
+    public function test_manager_can_create_a_schedule_for_each_day_in_a_custom_date_range(): void
+    {
+        [$user, $employee] = $this->createManager();
+
+        $response = $this->actingAs($user)->post('/schedules', [
+            'employee_id' => $employee->employee_id,
+            'start_date' => '2026-10-13',
+            'end_date' => '2026-10-18',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+
+        $response->assertRedirect('/schedules');
+        $response->assertSessionHas('success', 'Schedule created for 6 days.');
+        $this->assertDatabaseCount('schedules', 6);
+        $this->assertDatabaseHas('schedules', [
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-10-13',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-10-18',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+    }
+
+    public function test_manager_cannot_create_a_custom_range_if_any_day_overlaps(): void
+    {
+        [$user, $employee] = $this->createManager();
+
+        Schedule::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-10-15',
+            'start_time' => '12:00:00',
+            'end_time' => '16:00:00',
+            'status' => 'Active',
+        ]);
+
+        $response = $this->actingAs($user)->post('/schedules', [
+            'employee_id' => $employee->employee_id,
+            'start_date' => '2026-10-13',
+            'end_date' => '2026-10-18',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+
+        $response->assertSessionHasErrors('schedule');
+        $this->assertDatabaseCount('schedules', 1);
+    }
+
+    public function test_manager_cannot_create_a_custom_schedule_range_longer_than_31_days(): void
+    {
+        [$user, $employee] = $this->createManager();
+
+        $response = $this->actingAs($user)->post('/schedules', [
+            'employee_id' => $employee->employee_id,
+            'start_date' => '2026-10-01',
+            'end_date' => '2026-11-01',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+
+        $response->assertSessionHasErrors([
+            'end_date' => 'A schedule range cannot be longer than 31 days.',
+        ]);
+        $this->assertDatabaseCount('schedules', 0);
+    }
+
+    public function test_manager_cannot_create_a_custom_schedule_range_when_end_date_precedes_start_date(): void
+    {
+        [$user, $employee] = $this->createManager();
+
+        $response = $this->actingAs($user)->post('/schedules', [
+            'employee_id' => $employee->employee_id,
+            'start_date' => '2026-10-18',
+            'end_date' => '2026-10-13',
+            'start_time' => '08:00',
+            'end_time' => '17:00',
+            'status' => 'Active',
+        ]);
+
+        $response->assertSessionHasErrors('end_date');
+        $this->assertDatabaseCount('schedules', 0);
     }
 }

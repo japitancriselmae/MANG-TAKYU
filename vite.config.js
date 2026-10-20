@@ -1,3 +1,4 @@
+
 import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
@@ -16,7 +17,12 @@ export default defineConfig({
         }),
         tailwindcss(),
     ],
+
     server: {
+        allowedHosts: [
+            'convicted-rice-wishlist-ntsc.trycloudflare.com',
+        ],
+
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },

@@ -2,160 +2,138 @@
 
 @section('title', 'Kitchen Queue')
 @section('page-title', 'Kitchen Queue')
-@section('page-subtitle', 'Manage confirmed and preparing orders.')
+@section('page-subtitle', 'Track chicken cooking batches.')
 
 @section('content')
 
-@php
-    $activeCount = $orders->count();
-@endphp
-
-{{-- KPI strip --}}
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-    <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-[#E31E24] text-white flex items-center justify-center">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.361-6.867 8.21 8.21 0 003 2.48z"/>
-            </svg>
-        </div>
-        <div>
-            <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Active Orders</div>
-            <div class="text-3xl font-bold text-slate-800">{{ $activeCount }}</div>
-        </div>
-    </div>
-</div>
-
-@if ($activeCount > 0)
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        @foreach ($orders as $order)
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-
-                {{-- HEADER --}}
-                <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between gap-3">
-                    <div>
-                        <h3 class="text-xl font-bold text-slate-800">Order #{{ $order->order_id }}</h3>
-                        <p class="text-xs text-slate-500 mt-0.5">
-                            {{ $order->order_type }} · {{ $order->order_date->format('h:i A') }}
-                        </p>
-                    </div>
-                    @if ($order->status === 'Confirmed')
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold">
-                            <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                            Confirmed
-                        </span>
-                    @elseif ($order->status === 'Preparing')
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-bold">
-                            <span class="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
-                            Preparing
-                        </span>
-                    @endif
-                </div>
-
-                {{-- FRESH CHICKEN TIMER --}}
-                @if ($order->is_fresh_chicken && $order->estimated_ready_at)
-                    <div class="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
-                        <div>
-                            <p class="text-xs font-bold text-amber-700 uppercase tracking-wider">🍗 Fresh Chicken</p>
-                            <p class="text-[11px] text-amber-600 mt-0.5">Estimated ready time</p>
-                        </div>
-                        <div class="text-3xl font-bold text-amber-700 tabular-nums countdown"
-                             data-ready-time="{{ $order->estimated_ready_at->toIso8601String() }}">
-                            --:--
-                        </div>
-                    </div>
-                @endif
-
-                {{-- ITEMS --}}
-                <div class="p-6">
-                    <h4 class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-3">Order Items</h4>
-                    <div class="space-y-2">
-                        @foreach ($order->orderItems as $item)
-                            <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                                <div>
-                                    <div class="font-semibold text-slate-800 text-sm">
-                                        {{ $item->product?->product_name ?? 'Product Deleted' }}
-                                    </div>
-                                    <div class="text-xs text-slate-500">₱{{ number_format($item->unit_price, 2) }} each</div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="font-bold text-slate-800">× {{ $item->quantity }}</div>
-                                    <div class="text-xs text-slate-500">₱{{ number_format($item->subtotal, 2) }}</div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-
-                    {{-- TOTAL --}}
-                    <div class="flex justify-between items-center mt-5 pt-5 border-t border-slate-200">
-                        <span class="font-semibold text-slate-700">Total</span>
-                        <span class="text-2xl font-bold text-[#E31E24]">₱{{ number_format($order->total_amount, 2) }}</span>
-                    </div>
-
-                    {{-- EMPLOYEE --}}
-                    <div class="mt-4 p-3 bg-slate-50 rounded-xl">
-                        <p class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Taken by</p>
-                        <p class="font-semibold text-slate-800 text-sm mt-0.5">
-                            {{ $order->employee?->first_name }} {{ $order->employee?->last_name }}
-                        </p>
-                    </div>
-
-                    {{-- ACTION --}}
-                    <div class="mt-5">
-                        @if ($order->status === 'Confirmed')
-                            <form action="{{ route('orders.preparing', $order) }}" method="POST">
-                                @csrf
-                                <button type="submit"
-                                        class="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold
-                                               shadow-lg shadow-purple-500/20 transition">
-                                    Start Preparing
-                                </button>
-                            </form>
-                        @elseif ($order->status === 'Preparing')
-                            <form action="{{ route('orders.ready', $order) }}" method="POST">
-                                @csrf
-                                <button type="submit"
-                                        class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold
-                                               shadow-lg shadow-emerald-500/20 transition">
-                                    Mark as Ready
-                                </button>
-                            </form>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        @endforeach
-    </div>
-@else
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-6 py-20 text-center">
-        <div class="text-5xl mb-3">✓</div>
-        <h3 class="text-xl font-bold text-slate-700">No Active Orders</h3>
-        <p class="text-sm text-slate-500 mt-1">
-            There are currently no confirmed or preparing orders.
+<section class="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+    <div>
+        <h2 class="text-xl font-bold text-slate-800">Cooking Batches</h2>
+        <p class="mt-1 text-sm text-slate-500">
+            Track kitchen-wide chicken batches. Batches do not change orders or POS availability.
         </p>
     </div>
-@endif
+
+    <form action="{{ route('kitchen.batches.reset') }}" method="POST"
+          class="mt-4 inline-block">
+        @csrf @method('DELETE')
+        <button type="submit"
+                onclick="return confirm('Reset today\'s kitchen queue? This will remove all batches started today.');"
+                class="px-4 py-2 rounded-lg border border-slate-300 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
+            Reset Today's Queue
+        </button>
+    </form>
+
+    @error('batch')
+        <p class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{{ $message }}</p>
+    @enderror
+
+    <form action="{{ route('kitchen.batches.store') }}" method="POST"
+          class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        @csrf
+        <input type="hidden" name="food_type" value="chicken">
+        <label>
+            <span class="mb-1 block text-xs font-semibold text-slate-600">Chicken batch quantity (pieces)</span>
+            <input type="number" name="quantity" required min="1" max="1000000"
+                   value="{{ old('quantity') }}"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#E31E24] focus:outline-none focus:ring-2 focus:ring-[#E31E24]/20">
+        </label>
+        <label>
+            <span class="mb-1 block text-xs font-semibold text-slate-600">Timer (minutes)</span>
+            <input type="number" name="duration_minutes" required min="1" max="1440"
+                   value="{{ old('duration_minutes') }}"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-[#E31E24] focus:outline-none focus:ring-2 focus:ring-[#E31E24]/20">
+        </label>
+        <div class="flex items-end">
+            <button type="submit"
+                    class="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700">
+                Start Batch Timer
+            </button>
+        </div>
+    </form>
+
+    @if ($batches->isNotEmpty())
+        <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            @foreach ($batches as $batch)
+                @php
+                    $batchTimerFinished = $batch->started_at
+                        ->copy()
+                        ->addMinutes($batch->duration_minutes)
+                        ->isPast();
+                @endphp
+                <article class="rounded-xl border border-slate-200 p-4" data-batch-card>
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 class="font-bold capitalize text-slate-800">{{ $batch->quantity }} pcs chicken</h3>
+                            <p class="mt-1 text-xs text-slate-500">
+                                {{ $batch->duration_minutes }} min · Started {{ $batch->started_at->format('h:i A') }}
+                            </p>
+                        </div>
+                        <span class="text-xs text-slate-500">
+                            {{ $batch->employee?->first_name }} {{ $batch->employee?->last_name }}
+                        </span>
+                    </div>
+                    <div class="cooking-countdown mt-3 font-mono text-2xl font-bold tabular-nums text-amber-700"
+                         role="timer"
+                         data-batch-status="{{ $batch->status }}"
+                         data-started-at="{{ $batch->started_at->toIso8601String() }}"
+                         data-duration-minutes="{{ $batch->duration_minutes }}">--:--</div>
+                    @if ($batch->status === 'ready')
+                        <p class="mt-2 text-sm font-semibold text-emerald-700">
+                            Ready for service · {{ $batch->ready_at?->format('h:i A') }}
+                        </p>
+                    @else
+                        <form action="{{ route('kitchen.batches.ready', $batch) }}" method="POST" class="mt-3">
+                            @csrf
+                            <button type="submit"
+                                    @if (! $batchTimerFinished) hidden @endif
+                                    class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700">
+                                Confirm Batch Ready
+                            </button>
+                        </form>
+                    @endif
+                </article>
+            @endforeach
+        </div>
+    @else
+        <p class="mt-5 rounded-xl bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+            No cooking batches have been started.
+        </p>
+    @endif
+</section>
 
 @push('scripts')
 <script>
-function updateCountdowns() {
-    document.querySelectorAll('.countdown').forEach(el => {
-        const readyTime = new Date(el.dataset.readyTime).getTime();
-        const diff = readyTime - Date.now();
+function updateCookingCountdowns() {
+    document.querySelectorAll('.cooking-countdown').forEach((element) => {
+        const startedAt = new Date(element.dataset.startedAt).getTime();
+        const duration = Number(element.dataset.durationMinutes) * 60 * 1000;
+        const secondsLeft = Math.max(0, Math.ceil((startedAt + duration - Date.now()) / 1000));
 
-        if (diff <= 0) {
-            el.textContent = '00:00';
-            el.classList.remove('text-amber-700');
-            el.classList.add('text-red-600');
+        if (secondsLeft === 0) {
+            element.textContent = 'Timer finished';
+            element.classList.remove('text-amber-700');
+            element.classList.add('text-emerald-700');
+            if (element.dataset.batchStatus === 'cooking') {
+                const readyButton = element.closest('[data-batch-card]')
+                    ?.querySelector('button[type="submit"]');
+                readyButton?.removeAttribute('hidden');
+            }
             return;
         }
-        const totalSec = Math.floor(diff / 1000);
-        const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
-        const s = String(totalSec % 60).padStart(2, '0');
-        el.textContent = m + ':' + s;
+
+        const hours = Math.floor(secondsLeft / 3600);
+        const minutes = Math.floor((secondsLeft % 3600) / 60);
+        const seconds = secondsLeft % 60;
+        const clock = hours > 0
+            ? [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':')
+            : [minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+
+        element.textContent = clock;
     });
 }
-updateCountdowns();
-setInterval(updateCountdowns, 1000);
+updateCookingCountdowns();
+setInterval(updateCookingCountdowns, 1000);
 </script>
 @endpush
 

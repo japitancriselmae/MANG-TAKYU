@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', $product->product_name)
 @section('page-title', $product->product_name)
@@ -22,7 +22,19 @@
     </div>
 </div>
 
-{{-- Info cards --}}
+{{-- Product Photo card --}}
+<div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm mb-6">
+    <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">Product Photo</div>
+    @if ($product->image_path)
+        <img src="{{ asset('storage/'.$product->image_path) }}" alt="{{ $product->product_name }}"
+             class="max-h-40 rounded-xl border border-slate-200 object-contain">
+    @else
+        <div class="rounded-xl border-2 border-dashed border-slate-200 p-6 text-center">
+            <p class="text-xs text-slate-400">No photo uploaded</p>
+        </div>
+    @endif
+</div>
+
 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
     <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
         <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Product ID</div>
@@ -33,7 +45,7 @@
     <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
         <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Price</div>
         <div class="text-2xl font-bold text-[#E31E24]">
-            ₱{{ number_format($product->price, 2) }}
+            &#8369;{{ number_format($product->price, 2) }}
         </div>
     </div>
     <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">

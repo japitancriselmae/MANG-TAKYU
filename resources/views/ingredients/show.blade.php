@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Ingredient Details')
 @section('page-title', 'Ingredient Details')
@@ -15,9 +15,9 @@
            class="px-5 py-2.5 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-semibold shadow-lg shadow-red-500/20 transition">
             Edit Ingredient
         </a>
-        <a href="{{ route('ingredients.index') }}"
+        <a href="{{ route('inventories.index', ['tab' => 'stock']) }}"
            class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition">
-            ← Back
+            â† Back
         </a>
     </div>
 </div>

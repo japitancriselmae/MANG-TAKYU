@@ -23,8 +23,8 @@ class EmployeeController extends Controller
 
     public function index()
     {
-        $employees = Employee::with('role')
-            ->whereHas('role', fn($q) => $q->where('role_name', '!=', 'Admin'))
+        $employees = Employee::with(['role', 'user'])
+            ->whereHas('role', fn ($q) => $q->where('role_name', '!=', 'Admin'))
             ->orderBy('employee_id')
             ->get();
 
@@ -47,10 +47,10 @@ class EmployeeController extends Controller
         $this->requireManager();
 
         $validated = $request->validate([
-            'role_id'    => ['required', 'exists:roles,role_id'],
+            'role_id' => ['required', 'exists:roles,role_id'],
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name'  => ['required', 'string', 'max:255'],
-            'status'     => ['required', 'in:Active,Inactive'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'status' => ['required', 'in:Active,Inactive'],
         ]);
 
         Employee::create($validated);
@@ -82,7 +82,7 @@ class EmployeeController extends Controller
             ->orderBy('role_id')
             ->get();
 
-        $employee->load('role');
+        $employee->load(['role', 'user']);
 
         return view('employees.edit', compact('employee', 'roles'));
     }
@@ -98,10 +98,10 @@ class EmployeeController extends Controller
         }
 
         $validated = $request->validate([
-            'role_id'    => ['required', 'exists:roles,role_id'],
+            'role_id' => ['required', 'exists:roles,role_id'],
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name'  => ['required', 'string', 'max:255'],
-            'status'     => ['required', 'in:Active,Inactive'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'status' => ['required', 'in:Active,Inactive'],
         ]);
 
         $employee->update($validated);

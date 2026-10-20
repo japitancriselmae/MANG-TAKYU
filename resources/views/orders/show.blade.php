@@ -10,7 +10,9 @@
     $user = auth()->user();
     $role = $user->employee?->role?->role_name;
 
-    $steps = ['Pending', 'Confirmed', 'Preparing', 'Ready', 'Paid', 'Completed'];
+    $steps = $order->status === 'Paid'
+        ? ['Pending', 'Confirmed', 'Preparing', 'Ready', 'Paid', 'Completed']
+        : ['Pending', 'Confirmed', 'Preparing', 'Ready', 'Completed'];
     $currentIndex = array_search($order->status, $steps);
     if ($currentIndex === false) $currentIndex = 0;
 
@@ -42,7 +44,7 @@
            class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition text-sm">
             ← All Orders
         </a>
-        @if ($order->status === 'Pending')
+        @if ($order->status !== 'Completed')
             <a href="{{ route('orders.edit', $order) }}"
                class="px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition text-sm">
                 Edit Order
@@ -50,6 +52,36 @@
         @endif
     </div>
 </div>
+
+{{-- FRESH CHICKEN TIMER --}}
+@if ($order->is_fresh_chicken && $order->status !== 'Completed')
+    <div class="rounded-2xl border border-amber-200 bg-white p-6 mb-5">
+        <h3 class="font-bold text-amber-900">Kitchen fresh chicken timer</h3>
+
+        @if ($chickenBatches->isNotEmpty())
+            <p class="mt-1 text-sm text-slate-600">
+                Chicken is being cooked. This order is released when the timer finishes
+                and the kitchen confirms the batch.
+            </p>
+            <div class="mt-3 space-y-3">
+                @foreach ($chickenBatches as $batch)
+                    <div class="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3">
+                        <span class="text-sm font-semibold text-slate-800">{{ $batch->quantity }} pcs chicken</span>
+                        <span class="fresh-chicken-countdown font-mono text-lg font-bold tabular-nums text-amber-800"
+                              role="timer"
+                              data-started-at="{{ $batch->started_at->toIso8601String() }}"
+                              data-duration-minutes="{{ $batch->duration_minutes }}">--:--</span>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <p class="mt-1 text-sm text-slate-600">
+                Waiting for the kitchen to start a fresh chicken batch.
+                No cooking timer is running yet.
+            </p>
+        @endif
+    </div>
+@endif
 
 {{-- TIMELINE --}}
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-5">
@@ -80,51 +112,20 @@
     </div>
 </div>
 
-{{-- FRESH CHICKEN TIMER --}}
-@if ($order->is_fresh_chicken)
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-5">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-2 mb-1">
-                    <span class="text-2xl">🍗</span>
-                    <h3 class="font-bold text-slate-800">Fresh Chicken Order</h3>
-                </div>
-                <p class="text-sm text-slate-500">12-minute preparation timer</p>
-                @if ($order->estimated_ready_at)
-                    <p class="text-xs text-slate-500 mt-1">
-                        Estimated ready: <span class="font-semibold text-slate-700">{{ $order->estimated_ready_at->format('h:i:s A') }}</span>
-                    </p>
-                @endif
-            </div>
-
-            @if ($order->ready_at)
-                <div class="px-8 py-5 bg-emerald-50 border border-emerald-200 rounded-2xl text-center">
-                    <div class="text-xs uppercase tracking-widest text-emerald-700 font-bold mb-1">Ready</div>
-                    <div class="text-5xl text-emerald-600">✓</div>
-                    <div class="text-xs text-emerald-600 mt-1">at {{ $order->ready_at->format('h:i:s A') }}</div>
-                </div>
-            @elseif ($order->estimated_ready_at)
-                <div id="timerBox" class="px-8 py-5 bg-blue-50 border border-blue-200 rounded-2xl text-center">
-                    <div id="timerLabel" class="text-xs uppercase tracking-widest text-blue-700 font-bold mb-1">Time Remaining</div>
-                    <div id="countdown" class="text-5xl font-bold text-blue-700 tabular-nums">--:--</div>
-                    <div id="timerMessage" class="text-xs text-blue-600 mt-1">Preparing fresh chicken...</div>
-                </div>
-            @else
-                <div class="px-8 py-5 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                    <div class="text-xs uppercase tracking-widest text-amber-700 font-bold mb-1">Not Started</div>
-                    <div class="text-3xl font-bold text-amber-700">12:00</div>
-                    <div class="text-xs text-amber-600 mt-1">Awaiting confirmation</div>
-                </div>
-            @endif
-        </div>
-    </div>
-@endif
-
 {{-- INFO GRID --}}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Order Type</div>
         <div class="text-lg font-bold text-slate-800">{{ $order->order_type }}</div>
+    </div>
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Payment</div>
+        @if ($order->payments->isNotEmpty())
+            <div class="text-lg font-bold text-emerald-700">Paid · {{ $order->payments->first()->payment_method }}</div>
+            <div class="text-xs text-slate-500">₱{{ number_format($order->payments->first()->amount_paid, 2) }}</div>
+        @else
+            <div class="text-lg font-bold text-amber-700">Not paid</div>
+        @endif
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Date</div>
@@ -242,19 +243,19 @@
             </form>
         @endif
 
-        @if ($order->status === 'Ready')
+        @if ($order->status === 'Ready' && $order->payments->isEmpty())
             <a href="{{ route('payments.create', ['order_id' => $order->order_id]) }}"
                class="px-6 py-3 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-bold shadow-lg shadow-red-500/20 transition">
                 Record Payment
             </a>
         @endif
 
-        @if ($order->status === 'Paid')
+        @if (in_array($order->status, ['Paid', 'Ready']) && $order->payments->isNotEmpty())
             <form action="{{ route('orders.complete', $order) }}" method="POST">
                 @csrf
                 <button type="submit"
                         class="px-6 py-3 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-bold shadow-lg shadow-slate-500/20 transition">
-                    Complete Order
+                    Fully Complete Order
                 </button>
             </form>
         @endif
@@ -268,33 +269,24 @@
 </div>
 
 @push('scripts')
-@if ($order->is_fresh_chicken && $order->estimated_ready_at && !$order->ready_at)
 <script>
-const estimatedReadyAt = new Date(@json($order->estimated_ready_at->toIso8601String())).getTime();
-const countdown  = document.getElementById('countdown');
-const timerLabel = document.getElementById('timerLabel');
-const timerMsg   = document.getElementById('timerMessage');
-const timerBox   = document.getElementById('timerBox');
-
-function tick() {
-    const diff = estimatedReadyAt - Date.now();
-    if (diff <= 0) {
-        countdown.textContent = '00:00';
-        timerLabel.textContent = 'Time Reached';
-        timerMsg.textContent = 'The 12-minute prep time has ended.';
-        timerBox.classList.remove('bg-blue-50', 'border-blue-200');
-        timerBox.classList.add('bg-amber-50', 'border-amber-300');
-        return;
+(() => {
+    function updateChickenCountdowns() {
+        document.querySelectorAll('.fresh-chicken-countdown').forEach((timer) => {
+            const endTime = Date.parse(timer.dataset.startedAt) + Number(timer.dataset.durationMinutes) * 60_000;
+            const remainingSeconds = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+            const minutes = Math.floor(remainingSeconds / 60);
+            const seconds = remainingSeconds % 60;
+            timer.textContent = remainingSeconds > 0
+                ? `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+                : 'Timer complete — awaiting kitchen confirmation';
+        });
     }
-    const totalSec = Math.floor(diff / 1000);
-    const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
-    const s = String(totalSec % 60).padStart(2, '0');
-    countdown.textContent = m + ':' + s;
-}
-tick();
-setInterval(tick, 1000);
+
+    updateChickenCountdowns();
+    window.setInterval(updateChickenCountdowns, 1000);
+})();
 </script>
-@endif
 @endpush
 
 @endsection

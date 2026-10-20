@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('title', 'Add Ingredient')
 @section('page-title', 'Add Ingredient')
@@ -63,7 +63,7 @@
                                shadow-lg shadow-red-500/20 transition">
                     Save Ingredient
                 </button>
-                <a href="{{ route('ingredients.index') }}"
+                <a href="{{ route('inventories.index', ['tab' => 'stock']) }}"
                    class="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold
                           hover:bg-slate-50 transition">
                     Cancel

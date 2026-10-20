@@ -59,7 +59,7 @@
                         <option value="">Select Employee</option>
                         @foreach ($employees as $employee)
                             <option value="{{ $employee->employee_id }}"
-                                {{ old('employee_id') == $employee->employee_id ? 'selected' : '' }}>
+                            {{ old('employee_id', $selectedEmployeeId) == $employee->employee_id ? 'selected' : '' }}>
                                 {{ $employee->first_name }} {{ $employee->last_name }}
                                 — {{ $employee->role->role_name ?? 'No Role' }}
                             </option>
@@ -101,7 +101,7 @@
                                    shadow-lg shadow-red-500/20 transition">
                         Create Account
                     </button>
-                    <a href="{{ route('users.index') }}"
+                    <a href="{{ route('employees.index') }}"
                        class="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold
                               hover:bg-slate-50 transition">
                         Cancel

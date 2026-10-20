@@ -60,7 +60,7 @@
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
         <h3 class="font-bold text-slate-800 mb-5">Payment Details</h3>
 
-        <form action="{{ route('payments.store') }}" method="POST" id="paymentForm">
+        <form action="{{ route('payments.store') }}" method="POST" id="paymentForm" enctype="multipart/form-data">
             @csrf
             <input type="hidden" name="order_id" value="{{ $order->order_id }}">
 
@@ -73,6 +73,14 @@
                     <option value="Cash"  {{ old('payment_method') === 'Cash'  ? 'selected' : '' }}>Cash</option>
                     <option value="GCash" {{ old('payment_method') === 'GCash' ? 'selected' : '' }}>GCash</option>
                 </select>
+            </div>
+
+            <div id="gcashProofField" class="mb-5 hidden">
+                <label for="gcash_proof" class="mb-2 block text-sm font-semibold text-slate-700">GCash payment screenshot</label>
+                <input type="file" name="gcash_proof" id="gcash_proof" accept="image/jpeg,image/png,image/webp"
+                       class="block w-full rounded-lg border border-slate-200 p-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-semibold file:text-blue-700">
+                <p class="mt-1 text-xs text-slate-500">Required for GCash · JPG, PNG or WebP · up to 5 MB</p>
+                <img id="gcashProofPreview" class="mt-3 hidden max-h-48 rounded-lg border border-slate-200 object-contain" alt="GCash proof preview">
             </div>
 
             <div class="mb-5">
@@ -112,17 +120,44 @@
 
 @push('scripts')
 <script>
-const orderTotal = {{ (float) $order->total_amount }};
-const amountInput = document.getElementById('amount_paid');
-const changeDisplay = document.getElementById('changeAmount');
+(() => {
+    const orderTotal = {{ (float) $order->total_amount }};
+    const amountInput = document.getElementById('amount_paid');
+    const methodInput = document.getElementById('payment_method');
+    const proofInput = document.getElementById('gcash_proof');
+    const proofField = document.getElementById('gcashProofField');
+    const proofPreview = document.getElementById('gcashProofPreview');
+    const changeDisplay = document.getElementById('changeAmount');
 
-function calculateChange() {
-    const amountPaid = parseFloat(amountInput.value) || 0;
-    const change = amountPaid - orderTotal;
-    changeDisplay.textContent = '₱' + (change >= 0 ? change.toFixed(2) : '0.00');
-}
-amountInput.addEventListener('input', calculateChange);
-calculateChange();
+    function updatePaymentFields() {
+        const isGcash = methodInput.value === 'GCash';
+        proofField.classList.toggle('hidden', !isGcash);
+        proofInput.required = isGcash;
+        amountInput.readOnly = isGcash;
+        if (isGcash) {
+            amountInput.value = orderTotal.toFixed(2);
+        }
+
+        const change = Number(amountInput.value || 0) - orderTotal;
+        changeDisplay.textContent = '₱' + (change > 0 ? change.toFixed(2) : '0.00');
+    }
+
+    methodInput.addEventListener('change', updatePaymentFields);
+    amountInput.addEventListener('input', updatePaymentFields);
+    proofInput.addEventListener('change', () => {
+        const file = proofInput.files[0];
+        if (!file) {
+            proofPreview.classList.add('hidden');
+            proofPreview.removeAttribute('src');
+            return;
+        }
+
+        proofPreview.src = URL.createObjectURL(file);
+        proofPreview.classList.remove('hidden');
+    });
+
+    updatePaymentFields();
+})();
 </script>
 @endpush
 

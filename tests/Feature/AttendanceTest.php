@@ -39,6 +39,8 @@ class AttendanceTest extends TestCase
             ->get('/attendances');
 
         $response->assertStatus(200);
+        $response->assertSee('Attendance');
+        $response->assertSee('Attendance Log');
     }
 
     public function test_employee_can_clock_in(): void
@@ -556,6 +558,224 @@ class AttendanceTest extends TestCase
         $absentEmployees = $response->viewData('absentEmployees');
 
         $this->assertCount(0, $absentEmployees);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_manager_can_filter_attendance_by_date(): void
+    {
+        Carbon::setTestNow('2026-09-18 12:00:00');
+
+        $role = Role::create([
+            'role_name' => 'Manager',
+        ]);
+
+        $managerEmployee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Test',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+
+        $manager = User::create([
+            'name' => 'Test Manager',
+            'email' => 'filter-manager@example.com',
+            'password' => 'password123',
+            'employee_id' => $managerEmployee->employee_id,
+        ]);
+
+        $scheduleYesterday = Schedule::create([
+            'employee_id' => $managerEmployee->employee_id,
+            'schedule_date' => '2026-09-17',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        $scheduleToday = Schedule::create([
+            'employee_id' => $managerEmployee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        Attendance::create([
+            'employee_id' => $managerEmployee->employee_id,
+            'schedule_id' => $scheduleYesterday->schedule_id,
+            'date' => '2026-09-17',
+            'time_in' => '08:00:00',
+            'time_out' => null,
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        Attendance::create([
+            'employee_id' => $managerEmployee->employee_id,
+            'schedule_id' => $scheduleToday->schedule_id,
+            'date' => '2026-09-18',
+            'time_in' => '08:00:00',
+            'time_out' => null,
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get('/attendances?date=2026-09-17');
+
+        $response->assertStatus(200);
+
+        $attendance = $response->viewData('attendance');
+
+        $this->assertCount(1, $attendance);
+        $this->assertSame(
+            '2026-09-17',
+            $attendance->first()->date->toDateString()
+        );
+
+        $this->assertSame(
+            '2026-09-17',
+            $response->viewData('filterDate')->toDateString()
+        );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_employee_can_filter_own_attendance_by_date(): void
+    {
+        Carbon::setTestNow('2026-09-18 12:00:00');
+
+        $cashierRole = Role::create([
+            'role_name' => 'Cashier',
+        ]);
+
+        $employee = Employee::create([
+            'role_id' => $cashierRole->role_id,
+            'first_name' => 'Test',
+            'last_name' => 'Cashier',
+            'status' => 'Active',
+        ]);
+
+        $user = User::create([
+            'name' => 'Test Cashier',
+            'email' => 'filter-cashier@example.com',
+            'password' => 'password123',
+            'employee_id' => $employee->employee_id,
+        ]);
+
+        $coworker = Employee::create([
+            'role_id' => $cashierRole->role_id,
+            'first_name' => 'Other',
+            'last_name' => 'Cashier',
+            'status' => 'Active',
+        ]);
+
+        $schedule = Schedule::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-09-17',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        $coworkerSchedule = Schedule::create([
+            'employee_id' => $coworker->employee_id,
+            'schedule_date' => '2026-09-17',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        $scheduleToday = Schedule::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        Attendance::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_id' => $schedule->schedule_id,
+            'date' => '2026-09-17',
+            'time_in' => '08:00:00',
+            'time_out' => null,
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        Attendance::create([
+            'employee_id' => $coworker->employee_id,
+            'schedule_id' => $coworkerSchedule->schedule_id,
+            'date' => '2026-09-17',
+            'time_in' => '08:05:00',
+            'time_out' => null,
+            'status' => 'Late',
+            'late_minutes' => 5,
+            'undertime_minutes' => 0,
+        ]);
+
+        Attendance::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_id' => $scheduleToday->schedule_id,
+            'date' => '2026-09-18',
+            'time_in' => '08:00:00',
+            'time_out' => null,
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->get('/attendances?date=2026-09-17');
+
+        $response->assertStatus(200);
+
+        $attendance = $response->viewData('attendance');
+
+        $this->assertCount(1, $attendance);
+        $this->assertSame(
+            $employee->employee_id,
+            $attendance->first()->employee_id
+        );
+        $this->assertSame(
+            '2026-09-17',
+            $attendance->first()->date->toDateString()
+        );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_attendance_date_filter_rejects_future_dates(): void
+    {
+        Carbon::setTestNow('2026-09-18 12:00:00');
+
+        $role = Role::create([
+            'role_name' => 'Manager',
+        ]);
+
+        $managerEmployee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Test',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+
+        $manager = User::create([
+            'name' => 'Test Manager',
+            'email' => 'filter-future@example.com',
+            'password' => 'password123',
+            'employee_id' => $managerEmployee->employee_id,
+        ]);
+
+        $response = $this->actingAs($manager)
+            ->get('/attendances?date=2026-09-19');
+
+        $response->assertStatus(302);
+        $response->assertSessionHasErrors('date');
 
         Carbon::setTestNow();
     }

@@ -1,23 +1,26 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-
-use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\AttendanceController;
-use App\Http\Controllers\ProductController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\KitchenBatchNotificationController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\IngredientController;
-use App\Http\Controllers\InventoryController;
-use App\Http\Controllers\StockMovementController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductIngredientController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SalesReportController;
+use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\StockNotificationController;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\RegisterController;
+use App\Http\Controllers\TransactionReportController;
 use App\Http\Controllers\UserController;
-
+use Illuminate\Support\Facades\Route;
 
 // =====================================================
 // LOGIN
@@ -40,46 +43,62 @@ Route::post(
     ->middleware('auth')
     ->name('logout');
 
-
-// =====================================================
-// FIRST-TIME SETUP (only works when 0 users exist)
-// =====================================================
-
-Route::get(
-    '/register',
-    [RegisterController::class, 'showForm']
-)->name('register');
-
-Route::post(
-    '/register',
-    [RegisterController::class, 'register']
-)->name('register.store');
-
-
 // =====================================================
 // PROTECTED SYSTEM ROUTES
 // =====================================================
 
 Route::middleware('auth')->group(function () {
 
+    Route::get(
+        '/account-settings',
+        [AccountSettingsController::class, 'edit']
+    )->name('account-settings.edit');
+
+    Route::put(
+        '/account-settings',
+        [AccountSettingsController::class, 'update']
+    )->name('account-settings.update');
+
+    Route::middleware('role:Cashier')->group(function () {
+        Route::get(
+            '/kitchen-batch-notifications',
+            [KitchenBatchNotificationController::class, 'index']
+        )->name('kitchen-batch-notifications.index');
+
+        Route::post(
+            '/kitchen-batch-notifications/{notification}/read',
+            [KitchenBatchNotificationController::class, 'markAsRead']
+        )->name('kitchen-batch-notifications.read');
+    });
+
     // =================================================
     // DASHBOARD
     // =================================================
 
-    Route::get('/', function () {
-        return view('dashboard');
-    })->name('dashboard');
-
+    Route::get('/', DashboardController::class)->name('dashboard');
 
     // =================================================
     // MANAGER ONLY
     // =================================================
 
     Route::middleware('role:Manager')->group(function () {
+        // =================================================
+        // DAILY TRANSACTION REPORT
+        // =================================================
 
-    Route::resource(
-    'roles',
-    \App\Http\Controllers\RoleController::class
+        Route::get(
+            '/reports/transactions',
+            TransactionReportController::class
+        )->name('reports.transactions');
+
+        Route::get(
+            '/reports/sales',
+            SalesReportController::class
+        )->name('reports.sales');
+
+        Route::resource(
+            'roles',
+            RoleController::class
         );
         Route::resource(
             'employees',
@@ -111,7 +130,7 @@ Route::middleware('auth')->group(function () {
             StockMovementController::class
         );
         Route::resource('users',
-         UserController::class
+            UserController::class
         );
 
         // =================================================
@@ -129,17 +148,39 @@ Route::middleware('auth')->group(function () {
         );
     });
 
-
     // =================================================
     // MANAGER + CASHIER
     // =================================================
 
     Route::middleware('role:Manager,Cashier')->group(function () {
 
+        Route::get(
+            'orders',
+            [OrderController::class, 'index']
+        )->name('orders.index');
+
+        Route::get(
+            'payments/{payment}/proof',
+            [PaymentController::class, 'proof']
+        )->name('payments.proof');
+
+        Route::resource(
+            'payments',
+            PaymentController::class
+        );
+    });
+
+    Route::middleware('role:Cashier')->group(function () {
+
         Route::resource(
             'orders',
             OrderController::class
-        );
+        )->except(['index']);
+
+        Route::get(
+            'orders/{order}/completed',
+            [OrderController::class, 'completed']
+        )->name('orders.completed');
 
         Route::post(
             'orders/{order}/confirm',
@@ -151,24 +192,32 @@ Route::middleware('auth')->group(function () {
             [OrderController::class, 'complete']
         )->name('orders.complete');
 
-
         Route::resource(
             'order-items',
             OrderItemController::class
         );
-
-        Route::resource(
-            'payments',
-            PaymentController::class
-        );
     });
-
 
     // =================================================
     // MANAGER + KITCHEN STAFF
     // =================================================
 
     Route::middleware('role:Manager,Kitchen Staff')->group(function () {
+
+        Route::post(
+            '/kitchen/batches',
+            [OrderController::class, 'startCookingBatch']
+        )->name('kitchen.batches.store');
+
+        Route::post(
+            '/kitchen/batches/{batch}/ready',
+            [OrderController::class, 'markCookingBatchReady']
+        )->name('kitchen.batches.ready');
+
+        Route::delete(
+            '/kitchen/batches/reset',
+            [OrderController::class, 'resetCookingBatches']
+        )->name('kitchen.batches.reset');
 
         Route::get(
             '/kitchen',
@@ -186,7 +235,6 @@ Route::middleware('auth')->group(function () {
         )->name('orders.ready');
     });
 
-
     // =================================================
     // ATTENDANCE
     // =================================================
@@ -195,11 +243,11 @@ Route::middleware('auth')->group(function () {
         'attendances/{attendance}/clock-out',
         [AttendanceController::class, 'clockOut']
     )->name('attendances.clock-out');
-    
+
     Route::post(
-    'attendances/{attendance}/upload-proof',
-    [AttendanceController::class, 'uploadProof']
-)->name('attendances.upload-proof');
+        'attendances/{attendance}/upload-proof',
+        [AttendanceController::class, 'uploadProof']
+    )->name('attendances.upload-proof');
 
     Route::resource(
         'attendances',

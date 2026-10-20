@@ -20,9 +20,9 @@ class UserController extends Controller
         $role = auth()->user()->employee?->role?->role_name;
 
         return match ($role) {
-            'Admin'   => ['Manager'],
+            'Admin' => ['Manager'],
             'Manager' => ['Cashier', 'Kitchen Staff'],
-            default   => [],
+            default => [],
         };
     }
 
@@ -31,7 +31,7 @@ class UserController extends Controller
      */
     private function canManage(User $target): bool
     {
-        $authRole   = auth()->user()->employee?->role?->role_name;
+        $authRole = auth()->user()->employee?->role?->role_name;
         $targetRole = $target->employee?->role?->role_name;
 
         // Never touch Admin
@@ -50,18 +50,18 @@ class UserController extends Controller
     public function index()
     {
         $authRole = auth()->user()->employee?->role?->role_name;
-        $allowed  = $this->allowedRoles();
+        $allowed = $this->allowedRoles();
 
         // Everyone with a user account, except the Admin
         $query = User::with('employee.role')
-            ->whereHas('employee.role', fn($q) => $q->where('role_name', '!=', 'Admin'))
+            ->whereHas('employee.role', fn ($q) => $q->where('role_name', '!=', 'Admin'))
             ->orderBy('id');
 
         // Manager only sees their own staff + themselves
         if ($authRole === 'Manager') {
             $query->where(function ($q) use ($allowed) {
-                $q->whereHas('employee.role', fn($r) => $r->whereIn('role_name', $allowed))
-                  ->orWhere('id', auth()->id());
+                $q->whereHas('employee.role', fn ($r) => $r->whereIn('role_name', $allowed))
+                    ->orWhere('id', auth()->id());
             });
         }
 
@@ -82,11 +82,12 @@ class UserController extends Controller
 
         $employees = Employee::with('role')
             ->whereDoesntHave('user')
-            ->whereHas('role', fn($q) => $q->whereIn('role_name', $allowed))
+            ->whereHas('role', fn ($q) => $q->whereIn('role_name', $allowed))
             ->orderBy('first_name')
             ->get();
+        $selectedEmployeeId = request()->query('employee_id');
 
-        return view('users.create', compact('employees', 'allowed'));
+        return view('users.create', compact('employees', 'allowed', 'selectedEmployeeId'));
     }
 
     public function store(Request $request)
@@ -104,8 +105,9 @@ class UserController extends Controller
                 function ($attribute, $value, $fail) use ($allowed) {
                     $employee = Employee::with('role')->find($value);
 
-                    if (!$employee) {
+                    if (! $employee) {
                         $fail('Employee not found.');
+
                         return;
                     }
 
@@ -113,11 +115,13 @@ class UserController extends Controller
 
                     if ($roleName === 'Admin') {
                         $fail('An Admin account already exists. Only one Admin is allowed.');
+
                         return;
                     }
 
-                    if (!in_array($roleName, $allowed)) {
+                    if (! in_array($roleName, $allowed)) {
                         $fail('You are not allowed to create an account for this role.');
+
                         return;
                     }
 
@@ -126,21 +130,21 @@ class UserController extends Controller
                     }
                 },
             ],
-            'email'    => ['required', 'email', 'max:255', 'unique:users,email'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
         ]);
 
         $employee = Employee::findOrFail($validated['employee_id']);
 
         User::create([
-            'name'        => trim($employee->first_name . ' ' . $employee->last_name),
-            'email'       => strtolower($validated['email']),
-            'password'    => Hash::make($validated['password']),
+            'name' => trim($employee->first_name.' '.$employee->last_name),
+            'email' => strtolower($validated['email']),
+            'password' => Hash::make($validated['password']),
             'employee_id' => $employee->employee_id,
         ]);
 
         return redirect()
-            ->route('users.index')
+            ->route('employees.index')
             ->with('success', 'User account created successfully.');
     }
 
@@ -153,7 +157,7 @@ class UserController extends Controller
 
     public function edit(User $user)
     {
-        if (!$this->canManage($user)) {
+        if (! $this->canManage($user)) {
             abort(403, 'You are not authorized to edit this account.');
         }
 
@@ -164,12 +168,12 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
-        if (!$this->canManage($user)) {
+        if (! $this->canManage($user)) {
             abort(403, 'You are not authorized to edit this account.');
         }
 
         $validated = $request->validate([
-            'name'  => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
             'email' => [
                 'required',
                 'email',
@@ -179,30 +183,30 @@ class UserController extends Controller
             'password' => ['nullable', 'string', 'min:6', 'confirmed'],
         ]);
 
-        $user->name  = $validated['name'];
+        $user->name = $validated['name'];
         $user->email = strtolower($validated['email']);
 
-        if (!empty($validated['password'])) {
+        if (! empty($validated['password'])) {
             $user->password = Hash::make($validated['password']);
         }
 
         $user->save();
 
         return redirect()
-            ->route('users.index')
+            ->route('employees.index')
             ->with('success', 'User account updated successfully.');
     }
 
     public function destroy(User $user)
     {
-        if (!$this->canManage($user)) {
+        if (! $this->canManage($user)) {
             abort(403, 'You are not authorized to delete this account.');
         }
 
         $user->delete();
 
         return redirect()
-            ->route('users.index')
+            ->route('employees.index')
             ->with('success', 'User account deleted successfully.');
     }
 }

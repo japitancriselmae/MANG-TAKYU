@@ -21,6 +21,8 @@ class KitchenBatchNotificationController extends Controller
                 'id' => $notification->id,
                 'message' => $notification->data['message'],
                 'status' => $notification->data['status'],
+                'started_at' => $notification->data['started_at'] ?? null,
+                'duration_minutes' => $notification->data['duration_minutes'] ?? null,
             ]);
 
         return response()->json([

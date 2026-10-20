@@ -44,6 +44,7 @@
                         <th class="px-6 py-3 font-semibold">ID</th>
                         <th class="px-6 py-3 font-semibold">Name</th>
                         <th class="px-6 py-3 font-semibold">Role</th>
+                        <th class="px-6 py-3 font-semibold">Login Account</th>
                         <th class="px-6 py-3 font-semibold">Status</th>
                         <th class="px-6 py-3 font-semibold text-right">Actions</th>
                     </tr>
@@ -81,6 +82,24 @@
                                 <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold {{ $rc }}">
                                     {{ $roleName ?: 'No Role' }}
                                 </span>
+                            </td>
+                            <td class="px-6 py-4">
+                                @if ($employee->user)
+                                    <div class="text-sm text-slate-700">{{ $employee->user->email }}</div>
+                                    @if ($canManage && in_array($roleName, ['Cashier', 'Kitchen Staff'], true) && $employee->user->id !== auth()->id())
+                                        <a href="{{ route('users.edit', $employee->user) }}"
+                                           class="mt-1 inline-block text-xs font-semibold text-blue-700 hover:text-blue-900">
+                                            Edit login
+                                        </a>
+                                    @endif
+                                @elseif ($canManage && in_array($roleName, ['Cashier', 'Kitchen Staff'], true))
+                                    <a href="{{ route('users.create', ['employee_id' => $employee->employee_id]) }}"
+                                       class="inline-block rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200">
+                                        Create login
+                                    </a>
+                                @else
+                                    <span class="text-xs text-slate-400">No login account</span>
+                                @endif
                             </td>
                             <td class="px-6 py-4">
                                 @if ($employee->status === 'Active')

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Attendance;
+use App\Models\CookingBatch;
+use App\Models\Employee;
 use App\Models\Schedule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -10,43 +12,62 @@ use Illuminate\Support\Facades\Storage;
 
 class AttendanceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $role = $user->employee?->role?->role_name;
 
         $isManagerLike = in_array($role, ['Manager', 'Admin']);
 
+        $validated = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+        ]);
+
+        $filterDate = isset($validated['date'])
+            ? Carbon::createFromFormat('Y-m-d', $validated['date'])->startOfDay()
+            : null;
+
         if ($isManagerLike) {
             $attendance = Attendance::with(['employee.role', 'schedule'])
+                ->when($filterDate, function ($query) use ($filterDate): void {
+                    $query->whereDate('date', $filterDate->toDateString());
+                })
                 ->orderByDesc('date')
                 ->orderByDesc('time_in')
                 ->get();
         } else {
             $attendance = Attendance::with(['employee', 'schedule'])
                 ->where('employee_id', $user->employee_id)
+                ->when($filterDate, function ($query) use ($filterDate): void {
+                    $query->whereDate('date', $filterDate->toDateString());
+                })
                 ->orderByDesc('date')
                 ->orderByDesc('time_in')
                 ->get();
         }
 
-        $todaySchedule = Schedule::where('employee_id', $user->employee_id)
-            ->whereDate('schedule_date', Carbon::today())
-            ->where('status', 'Active')
-            ->orderBy('start_time')
-            ->first();
+        $absentEmployees = collect();
 
-        $todayAttendance = Attendance::where('employee_id', $user->employee_id)
-            ->whereDate('date', Carbon::today())
-            ->first();
+        if ($isManagerLike) {
+            $now = Carbon::now();
 
-        return view('attendances.index', compact(
-            'attendance',
-            'todaySchedule',
-            'todayAttendance',
-            'role',
-            'isManagerLike'
-        ));
+            $absentEmployees = Employee::query()
+                ->with('role')
+                ->where('status', 'Active')
+                ->whereHas('schedules', function ($query) use ($now): void {
+                    $query->whereDate('schedule_date', $now->toDateString())
+                        ->where('status', 'Active')
+                        ->where('start_time', '<=', $now->format('H:i:s'));
+                })
+                ->whereDoesntHave('attendances', function ($query) use ($now): void {
+                    $query->whereDate('date', $now->toDateString());
+                })
+                ->orderBy('first_name')
+                ->orderBy('last_name')
+                ->get();
+        }
+
+        return view('attendances.index', compact('attendance', 'isManagerLike', 'absentEmployees', 'filterDate'));
     }
 
     public function create()
@@ -58,7 +79,7 @@ class AttendanceController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user->employee_id) {
+        if (! $user->employee_id) {
             return back()->withErrors([
                 'attendance' => 'Your account is not linked to an employee.',
             ]);
@@ -70,12 +91,13 @@ class AttendanceController extends Controller
         $schedule = Schedule::where('employee_id', $employeeId)
             ->whereDate('schedule_date', $today)
             ->where('status', 'Active')
+            ->where('end_time', '>', now()->format('H:i:s'))
             ->orderBy('start_time')
             ->first();
 
-        if (!$schedule) {
+        if (! $schedule) {
             return back()->withErrors([
-                'attendance' => 'You do not have an active schedule for today.',
+                'attendance' => 'You do not have an active shift that has not ended today.',
             ]);
         }
 
@@ -92,7 +114,7 @@ class AttendanceController extends Controller
         $now = now();
 
         $scheduleStart = Carbon::parse(
-            $today->format('Y-m-d') . ' ' . $schedule->start_time
+            $today->format('Y-m-d').' '.$schedule->start_time
         );
 
         $lateMinutes = 0;
@@ -101,15 +123,15 @@ class AttendanceController extends Controller
         }
 
         Attendance::create([
-            'employee_id'       => $employeeId,
-            'schedule_id'       => $schedule->schedule_id,
-            'date'              => $today->format('Y-m-d'),
-            'time_in'           => $now->format('H:i:s'),
-            'time_out'          => null,
-            'status'            => $lateMinutes > 0 ? 'Late' : 'Present',
-            'late_minutes'      => $lateMinutes,
+            'employee_id' => $employeeId,
+            'schedule_id' => $schedule->schedule_id,
+            'date' => $today->format('Y-m-d'),
+            'time_in' => $now->format('H:i:s'),
+            'time_out' => null,
+            'status' => $lateMinutes > 0 ? 'Late' : 'Present',
+            'late_minutes' => $lateMinutes,
             'undertime_minutes' => 0,
-            'proof_image'       => null,
+            'proof_image' => null,
         ]);
 
         return redirect()
@@ -129,38 +151,31 @@ class AttendanceController extends Controller
         }
 
         $request->validate([
-            'proof_image' => ['required', 'file', 'max:5120'],
+            'proof_image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ], [
             'proof_image.required' => 'Please select a photo to upload.',
-            'proof_image.max'      => 'The photo must be smaller than 5 MB.',
+            'proof_image.image' => 'The attendance proof must be an image.',
+            'proof_image.mimes' => 'The attendance proof must be a JPG, JPEG, PNG, or WEBP image.',
+            'proof_image.max' => 'The photo must be smaller than 5 MB.',
         ]);
 
-        // Delete old photo using native PHP (no Storage facade = no finfo)
-            if ($attendance->proof_image) {
-                $path = storage_path('app/public/' . $attendance->proof_image);
-                if (file_exists($path)) {
-                    @unlink($path);
-                }
-            }
+        $path = $request->file('proof_image')->store('attendance_proofs', 'public');
 
-        // Ensure target directory exists
-        $targetDir = storage_path('app/public/attendance_proofs');
-        if (!file_exists($targetDir)) {
-            mkdir($targetDir, 0755, true);
+        if (! $path) {
+            return back()->withErrors([
+                'proof_image' => 'The proof photo could not be saved. Please try again.',
+            ]);
         }
 
-        // Manually build filename
-        $file     = $request->file('proof_image');
-        $ext      = strtolower($file->getClientOriginalExtension() ?: 'jpg');
-        $basename = uniqid('proof_', true) . '_' . time() . '.' . $ext;
-        $path     = 'attendance_proofs/' . $basename;
-
-        // Move file using native PHP
-        $file->move($targetDir, $basename);
+        $previousPath = $attendance->proof_image;
 
         $attendance->update([
             'proof_image' => $path,
         ]);
+
+        if ($previousPath) {
+            Storage::disk('public')->delete($previousPath);
+        }
 
         return redirect()
             ->route('attendances.index')
@@ -171,7 +186,7 @@ class AttendanceController extends Controller
     {
         $this->authorizeAttendance($attendance);
 
-        if (!$attendance->time_in) {
+        if (! $attendance->time_in) {
             return back()->withErrors(['attendance' => 'You must clock in before you can clock out.']);
         }
 
@@ -179,7 +194,7 @@ class AttendanceController extends Controller
             return back()->withErrors(['attendance' => 'You have already clocked out.']);
         }
 
-        if (!$attendance->schedule) {
+        if (! $attendance->schedule) {
             return back()->withErrors(['attendance' => 'This attendance record does not have a schedule.']);
         }
 
@@ -187,8 +202,8 @@ class AttendanceController extends Controller
 
         $scheduleEnd = Carbon::parse(
             Carbon::parse($attendance->date)->format('Y-m-d')
-                . ' '
-                . $attendance->schedule->end_time
+                .' '
+                .$attendance->schedule->end_time
         );
 
         $undertimeMinutes = 0;
@@ -197,9 +212,17 @@ class AttendanceController extends Controller
         }
 
         $attendance->update([
-            'time_out'          => $now->format('H:i:s'),
+            'time_out' => $now->format('H:i:s'),
             'undertime_minutes' => $undertimeMinutes,
         ]);
+
+        // Reset the kitchen queue when the shift ends: remove any unfinished
+        // cooking batch started by this employee so it does not linger in the
+        // kitchen queue after their shift is done.
+        CookingBatch::query()
+            ->where('employee_id', $attendance->employee_id)
+            ->where('status', 'cooking')
+            ->delete();
 
         return redirect()
             ->route('attendances.index')
@@ -221,7 +244,7 @@ class AttendanceController extends Controller
 
         $role = auth()->user()->employee?->role?->role_name;
 
-        if (!in_array($role, ['Manager', 'Admin'])) {
+        if (! in_array($role, ['Manager', 'Admin'])) {
             abort(403, 'Only the Manager can edit attendance records.');
         }
 
@@ -236,15 +259,15 @@ class AttendanceController extends Controller
 
         $role = auth()->user()->employee?->role?->role_name;
 
-        if (!in_array($role, ['Manager', 'Admin'])) {
+        if (! in_array($role, ['Manager', 'Admin'])) {
             abort(403, 'Only the Manager can update attendance records.');
         }
 
         $validated = $request->validate([
-            'time_in'           => ['nullable', 'date_format:H:i:s'],
-            'time_out'          => ['nullable', 'date_format:H:i:s', 'after_or_equal:time_in'],
-            'status'            => ['required', 'string', 'max:50'],
-            'late_minutes'      => ['required', 'integer', 'min:0'],
+            'time_in' => ['nullable', 'date_format:H:i:s'],
+            'time_out' => ['nullable', 'date_format:H:i:s', 'after_or_equal:time_in'],
+            'status' => ['required', 'string', 'max:50'],
+            'late_minutes' => ['required', 'integer', 'min:0'],
             'undertime_minutes' => ['required', 'integer', 'min:0'],
         ]);
 
@@ -259,7 +282,7 @@ class AttendanceController extends Controller
     {
         $role = auth()->user()->employee?->role?->role_name;
 
-        if (!in_array($role, ['Manager', 'Admin'])) {
+        if (! in_array($role, ['Manager', 'Admin'])) {
             abort(403, 'Only the Manager can delete attendance records.');
         }
 

@@ -4,19 +4,39 @@ namespace App\Http\Controllers;
 
 use App\Models\Ingredient;
 use App\Models\Inventory;
+use App\Models\ProductIngredient;
 use Illuminate\Http\Request;
 
 class InventoryController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $activeTab = $request->query('tab') === 'recipes'
+            ? 'recipes'
+            : ($request->query('tab') === 'ingredients' ? 'ingredients' : 'stock');
+
         $inventories = Inventory::with('ingredient')
             ->orderBy('quantity')
             ->get();
 
+        $productIngredients = ProductIngredient::with([
+            'product',
+            'ingredient',
+        ])
+            ->orderBy('product_id')
+            ->orderBy('ingredient_id')
+            ->get();
+
+        $ingredients = Ingredient::orderBy('ingredient_name')->get();
+
         return view(
             'inventories.index',
-            compact('inventories')
+            compact(
+                'inventories',
+                'productIngredients',
+                'ingredients',
+                'activeTab'
+            )
         );
     }
 
@@ -100,8 +120,8 @@ class InventoryController extends Controller
             'ingredient_id' => [
                 'required',
                 'exists:ingredients,ingredient_id',
-                'unique:inventories,ingredient_id,' .
-                    $inventory->inventory_id . ',inventory_id',
+                'unique:inventories,ingredient_id,'.
+                    $inventory->inventory_id.',inventory_id',
             ],
 
             'quantity' => [

@@ -11,18 +11,9 @@ class ProductIngredientController extends Controller
 {
     public function index()
     {
-        $productIngredients = ProductIngredient::with([
-            'product',
-            'ingredient',
-        ])
-            ->orderBy('product_id')
-            ->orderBy('ingredient_id')
-            ->get();
-
-        return view(
-            'product-ingredients.index',
-            compact('productIngredients')
-        );
+        return redirect()
+            ->route('inventories.index', ['tab' => 'recipes'])
+            ->with('success', 'Recipe management is now under the Inventory workspace.');
     }
 
     public function create(Request $request)
@@ -75,8 +66,7 @@ class ProductIngredientController extends Controller
         if ($duplicate) {
             return back()
                 ->withErrors([
-                    'ingredient_id' =>
-                    'This ingredient is already part of this product recipe.',
+                    'ingredient_id' => 'This ingredient is already part of this product recipe.',
                 ])
                 ->withInput();
         }
@@ -165,8 +155,7 @@ class ProductIngredientController extends Controller
         if ($duplicate) {
             return back()
                 ->withErrors([
-                    'ingredient_id' =>
-                    'This ingredient is already part of this product recipe.',
+                    'ingredient_id' => 'This ingredient is already part of this product recipe.',
                 ])
                 ->withInput();
         }

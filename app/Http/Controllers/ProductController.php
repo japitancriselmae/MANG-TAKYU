@@ -3,18 +3,32 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\ProductIngredient;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use RuntimeException;
+use Throwable;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $products = Product::with('productIngredients.ingredient')
             ->orderBy('product_name')
             ->get();
 
-        return view('products.index', compact('products'));
+        $productIngredients = ProductIngredient::with(['product', 'ingredient'])
+            ->orderBy('product_id')
+            ->orderBy('ingredient_id')
+            ->get();
+
+        $activeTab = $request->query('tab') === 'recipes' ? 'recipes' : 'products';
+
+        return view(
+            'products.index',
+            compact('products', 'productIngredients', 'activeTab')
+        );
     }
 
     public function create()
@@ -40,9 +54,36 @@ class ProductController extends Controller
                 'required',
                 'in:Active,Inactive',
             ],
+            'image' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
         ]);
 
-        Product::create($validated);
+        $productData = collect($validated)->except('image')->all();
+        $imagePath = null;
+
+        if ($request->hasFile('image')) {
+            $imagePath = $request->file('image')->store('products', 'public');
+
+            if (! $imagePath) {
+                throw new RuntimeException('The product image could not be saved.');
+            }
+
+            $productData['image_path'] = $imagePath;
+        }
+
+        try {
+            Product::create($productData);
+        } catch (Throwable $exception) {
+            if ($imagePath && ! Storage::disk('public')->delete($imagePath)) {
+                throw new RuntimeException('The product was not created and its uploaded image could not be removed.', previous: $exception);
+            }
+
+            throw $exception;
+        }
 
         return redirect()
             ->route('products.index')
@@ -83,9 +124,51 @@ class ProductController extends Controller
                 'required',
                 'in:Active,Inactive',
             ],
+            'image' => [
+                'nullable',
+                'image',
+                'mimes:jpg,jpeg,png,webp',
+                'max:5120',
+            ],
+            'remove_image' => [
+                'nullable',
+                'boolean',
+            ],
         ]);
 
-        $product->update($validated);
+        $productData = collect($validated)->except(['image', 'remove_image'])->all();
+        $oldImagePath = $product->image_path;
+        $newImagePath = null;
+
+        if ($request->hasFile('image')) {
+            $newImagePath = $request->file('image')->store('products', 'public');
+
+            if (! $newImagePath) {
+                throw new RuntimeException('The product image could not be saved.');
+            }
+
+            $productData['image_path'] = $newImagePath;
+        } elseif ($request->boolean('remove_image')) {
+            $productData['image_path'] = null;
+        }
+
+        try {
+            $product->update($productData);
+        } catch (Throwable $exception) {
+            if ($newImagePath && ! Storage::disk('public')->delete($newImagePath)) {
+                throw new RuntimeException('The product was not updated and its uploaded image could not be removed.', previous: $exception);
+            }
+
+            throw $exception;
+        }
+
+        if (
+            $oldImagePath
+            && $oldImagePath !== $product->image_path
+            && ! Storage::disk('public')->delete($oldImagePath)
+        ) {
+            throw new RuntimeException('The product was updated but its previous image could not be removed.');
+        }
 
         return redirect()
             ->route('products.index')

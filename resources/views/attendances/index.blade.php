@@ -6,212 +6,57 @@
 
 @section('content')
 
-@php
-    $user = auth()->user();
-    $role = $user->employee?->role?->role_name;
-    $requiresImage = in_array($role, ['Cashier', 'Kitchen Staff']);
-@endphp
-
-
 {{-- ============================================================
-     STAFF — TODAY'S PANEL
-============================================================ --}}
-@if (!$isManagerLike)
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-
-        {{-- Today's Schedule --}}
-        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl bg-[#0B0B0B] text-[#F5A623] flex items-center justify-center">
-                    <span class="w-5 h-5">@include('partials.icon', ['name' => 'calendar'])</span>
-                </div>
-                <div>
-                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Today's Schedule</div>
-                    <div class="text-sm font-semibold text-slate-700">{{ now()->format('l, M d') }}</div>
-                </div>
-            </div>
-
-            @if ($todaySchedule)
-                <div class="text-2xl font-bold text-slate-800">
-                    {{ \Carbon\Carbon::parse($todaySchedule->start_time)->format('h:i A') }}
-                    <span class="text-slate-300 font-normal mx-1">–</span>
-                    {{ \Carbon\Carbon::parse($todaySchedule->end_time)->format('h:i A') }}
-                </div>
-                <div class="text-xs text-emerald-600 font-semibold mt-2 inline-flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    Active shift
-                </div>
-            @else
-                <div class="text-2xl font-bold text-slate-400">No shift today</div>
-                <div class="text-xs text-slate-400 mt-2">You are off duty</div>
-            @endif
+     DATE FILTER
+=========================================================== --}}
+<div class="mb-6">
+    <form action="{{ route('attendances.index') }}" method="GET"
+          class="flex flex-wrap items-end gap-2">
+        <div>
+            <label for="date"
+                   class="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+                Attendance Date
+            </label>
+            <input type="date"
+                   id="date"
+                   name="date"
+                   value="{{ $filterDate?->toDateString() }}"
+                   max="{{ now()->toDateString() }}"
+                   class="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-800
+                          focus:outline-none focus:ring-2 focus:ring-[#E31E24] focus:border-transparent">
         </div>
+        <button type="submit"
+                class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm
+                       font-semibold transition">
+            Filter
+        </button>
+        @if ($filterDate)
+            <a href="{{ route('attendances.index') }}"
+               class="px-4 py-2 rounded-lg bg-white ring-1 ring-slate-200 text-slate-600 text-sm
+                      font-semibold hover:bg-slate-50 transition">
+                Clear
+            </a>
+        @endif
+        @error('date')
+            <p class="w-full text-xs font-semibold text-[#E31E24]">{{ $message }}</p>
+        @enderror
+    </form>
 
-        {{-- Clock In --}}
-        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl bg-[#E31E24] text-white flex items-center justify-center">
-                    <span class="w-5 h-5">@include('partials.icon', ['name' => 'clock'])</span>
-                </div>
-                <div>
-                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Clock In</div>
-                    <div class="text-sm font-semibold text-slate-700">Start of shift</div>
-                </div>
-            </div>
-
-            @if ($todayAttendance?->time_in)
-                <div class="text-2xl font-bold text-slate-800">
-                    {{ \Carbon\Carbon::parse($todayAttendance->time_in)->format('h:i A') }}
-                </div>
-                @if ($todayAttendance->late_minutes > 0)
-                    <div class="text-xs font-semibold text-[#E31E24] mt-2">
-                        Late by {{ $todayAttendance->late_minutes }} min
-                    </div>
-                @else
-                    <div class="text-xs font-semibold text-emerald-600 mt-2">On time ✓</div>
-                @endif
-            @else
-                <div class="text-2xl font-bold text-slate-300">— : —</div>
-                <form action="{{ route('attendances.store') }}" method="POST" class="mt-3">
-                    @csrf
-                    <button type="submit"
-                            class="w-full bg-[#E31E24] hover:bg-red-700 text-white font-semibold py-2.5 rounded-lg
-                                   shadow-lg shadow-red-500/20 transition disabled:opacity-50"
-                            {{ !$todaySchedule ? 'disabled' : '' }}>
-                        Clock In Now
-                    </button>
-                </form>
-                @if (!$todaySchedule)
-                    <p class="text-[10px] text-slate-400 mt-2 text-center">No active schedule for today.</p>
-                @endif
-            @endif
-        </div>
-
-        {{-- Clock Out --}}
-        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-            <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl bg-[#F5A623] text-[#0B0B0B] flex items-center justify-center">
-                    <span class="w-5 h-5">@include('partials.icon', ['name' => 'clock'])</span>
-                </div>
-                <div>
-                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Clock Out</div>
-                    <div class="text-sm font-semibold text-slate-700">End of shift</div>
-                </div>
-            </div>
-
-            @if ($todayAttendance?->time_out)
-                <div class="text-2xl font-bold text-slate-800">
-                    {{ \Carbon\Carbon::parse($todayAttendance->time_out)->format('h:i A') }}
-                </div>
-                @if ($todayAttendance->undertime_minutes > 0)
-                    <div class="text-xs font-semibold text-amber-600 mt-2">
-                        Undertime: {{ $todayAttendance->undertime_minutes }} min
-                    </div>
-                @else
-                    <div class="text-xs font-semibold text-emerald-600 mt-2">Complete shift ✓</div>
-                @endif
-            @elseif ($todayAttendance?->time_in)
-                <div class="text-2xl font-bold text-slate-300">— : —</div>
-                <form action="{{ route('attendances.clock-out', $todayAttendance) }}" method="POST" class="mt-3">
-                    @csrf
-                    <button type="submit"
-                            class="w-full bg-[#F5A623] hover:bg-amber-500 text-[#0B0B0B] font-semibold py-2.5 rounded-lg
-                                   shadow-lg shadow-amber-500/20 transition">
-                        Clock Out Now
-                    </button>
-                </form>
-            @else
-                <div class="text-2xl font-bold text-slate-300">— : —</div>
-                <p class="text-xs text-slate-400 mt-3">Clock in first to enable clock-out.</p>
-            @endif
-        </div>
-    </div>
-
-    {{-- PROOF PHOTO PANEL --}}
-    @if ($requiresImage && $todayAttendance?->time_in)
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6">
-            <div class="flex items-start gap-4 mb-4">
-                <div class="w-12 h-12 rounded-xl bg-[#E31E24] text-white flex items-center justify-center font-bold shrink-0">
-                    📷
-                </div>
-                <div class="flex-1">
-                    <h3 class="font-bold text-slate-800 text-lg">Proof of Attendance</h3>
-                    <p class="text-sm text-slate-500 mt-1">
-                        Upload a photo of yourself at your station. The Manager will see this in their dashboard.
-                    </p>
-                </div>
-            </div>
-
-            @if ($todayAttendance->proof_image)
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div class="md:col-span-1">
-                        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">Current Photo</div>
-                        <button type="button"
-                                onclick="openImageViewer('{{ asset('storage/' . $todayAttendance->proof_image) }}')"
-                                class="block w-full rounded-xl overflow-hidden border-2 border-emerald-200 hover:border-[#E31E24] transition cursor-pointer">
-                            <img src="{{ asset('storage/' . $todayAttendance->proof_image) }}"
-                                 alt="Proof"
-                                 class="w-full h-40 object-cover">
-                        </button>
-                        <div class="text-xs text-emerald-600 font-semibold mt-2">
-                            ✓ Uploaded successfully
-                        </div>
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">
-                            Replace Photo (optional)
-                        </div>
-                        <form action="{{ route('attendances.upload-proof', $todayAttendance) }}"
-                              method="POST" enctype="multipart/form-data" class="space-y-3">
-                            @csrf
-                            <input type="file" name="proof_image" accept="image/*" required
-                                   class="w-full text-sm px-4 py-3 border border-slate-200 rounded-xl
-                                          file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0
-                                          file:bg-slate-100 file:text-slate-700 file:text-xs file:font-semibold">
-                            <button type="submit"
-                                    class="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white font-semibold text-sm transition">
-                                Replace Photo
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            @else
-                <div class="p-5 rounded-xl bg-amber-50 border border-amber-200 mb-4">
-                    <p class="text-sm text-amber-800">
-                        <strong>⚠ You haven't uploaded your proof photo yet.</strong>
-                        Please upload a picture of yourself at your station.
-                    </p>
-                </div>
-
-                <form action="{{ route('attendances.upload-proof', $todayAttendance) }}"
-                      method="POST" enctype="multipart/form-data" class="space-y-3">
-                    @csrf
-                    <input type="file" name="proof_image" accept="image/*" required
-                           class="w-full text-sm px-4 py-3 border border-slate-200 rounded-xl
-                                  file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0
-                                  file:bg-[#E31E24] file:text-white file:text-sm file:font-semibold">
-                    <button type="submit"
-                            class="w-full py-3 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-bold
-                                   shadow-lg shadow-red-500/20 transition">
-                        Upload Proof Photo
-                    </button>
-                </form>
-            @endif
-        </div>
+    @if ($filterDate)
+        <p class="mt-3 text-sm text-slate-500">
+            Showing attendance for
+            <span class="font-semibold text-slate-700">{{ $filterDate->format('F j, Y') }}</span>
+        </p>
     @endif
-
-@endif
-
+</div>
 
 {{-- ============================================================
-     ATTENDANCE HISTORY
+     ATTENDANCE LOG
 ============================================================ --}}
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
     <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
         <h3 class="font-bold text-slate-800">
-            {{ $isManagerLike ? 'All Attendance Records' : 'My Attendance History' }}
+            {{ $isManagerLike ? 'Attendance Log' : 'My Attendance Log' }}
         </h3>
         <span class="text-xs text-slate-500">{{ $attendance->count() }} record(s)</span>
     </div>
@@ -303,8 +148,8 @@
     @else
         <div class="px-6 py-16 text-center">
             <div class="text-4xl mb-3">📋</div>
-            <p class="font-semibold text-slate-700">No attendance records yet</p>
-            <p class="text-sm text-slate-500 mt-1">Records will appear here after the first clock-in.</p>
+            <p class="font-semibold text-slate-700">No attendance logs yet</p>
+            <p class="text-sm text-slate-500 mt-1">Log entries will appear here after the first clock-in.</p>
         </div>
     @endif
 </div>

@@ -62,7 +62,7 @@
                                shadow-lg shadow-red-500/20 transition">
                     Update Account
                 </button>
-                <a href="{{ route('users.index') }}"
+                <a href="{{ route('employees.index') }}"
                    class="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold
                           hover:bg-slate-50 transition">
                     Cancel

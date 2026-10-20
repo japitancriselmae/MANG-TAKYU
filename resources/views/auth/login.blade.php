@@ -89,7 +89,7 @@
 
                     <div class="flex items-center justify-between text-sm">
                         <label class="flex items-center gap-2 text-white/70 cursor-pointer">
-                            <input type="checkbox" name="remember"
+                            <input type="checkbox" name="remember" value="1"
                                    class="h-4 w-4 rounded border-white/20 bg-black/40 text-[#E31E24] focus:ring-[#E31E24]">
                             Remember me
                         </label>
@@ -103,12 +103,6 @@
                 </form>
             </div>
 
-            <p class="mt-6 text-center text-xs text-white/40">
-                Need to create the first account?
-                <a href="{{ route('register') }}" class="text-[#F5A623] hover:underline font-semibold">
-                    First-time setup
-                </a>
-            </p>
             <p class="mt-4 text-center text-xs text-white/30">
                 &copy; {{ date('Y') }} Mang Takyu · Arellano St., Tagum City
             </p>

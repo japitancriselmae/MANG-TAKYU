@@ -16,7 +16,7 @@ class DashboardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_shows_today_metrics_without_sales_comparison_for_cashier(): void
+    public function test_dashboard_shows_today_metrics_for_cashier(): void
     {
         $this->travelTo(Carbon::parse('2026-10-12 11:00:00'));
 
@@ -85,30 +85,27 @@ class DashboardTest extends TestCase
 
         $response->assertViewHas('totalOrders', 2);
         $response->assertViewHas('pendingOrders', 1);
-        $response->assertViewHas('completedOrders', 1);
-        $response->assertViewHas('totalTransactions', 1);
         $response->assertViewHas('salesToday', 200.0);
+        $response->assertViewHas('salesComparison');
         $response->assertSee('Orders Today');
         $response->assertSee('Sales Today');
-        $response->assertSee('Pending Orders');
-        $response->assertSee('Completed Orders');
-        $response->assertSee('Total Transactions');
-        $response->assertDontSee('Sales Comparison');
-        $response->assertViewMissing('salesComparison');
+        $response->assertSee('Sales Comparison');
+        $response->assertDontSee('Completed Orders');
+        $response->assertDontSee('Total Transactions');
         $response->assertSee('dashboard-date', false);
         $response->assertSee('dashboard-time', false);
         $response->assertDontSee('Quick Actions');
     }
 
     #[DataProvider('staffRoles')]
-    public function test_dashboard_hides_sales_comparison_from_staff_roles(string $roleName): void
+    public function test_dashboard_shows_sales_comparison_to_all_roles(string $roleName): void
     {
         $user = $this->createEmployeeUser($roleName);
 
         $response = $this->actingAs($user)->get('/');
 
-        $response->assertDontSee('Sales Comparison');
-        $response->assertViewMissing('salesComparison');
+        $response->assertSee('Sales Comparison');
+        $response->assertViewHas('salesComparison');
     }
 
     public function test_dashboard_shows_sales_comparison_to_manager(): void

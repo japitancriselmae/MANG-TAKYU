@@ -13,8 +13,7 @@ class DashboardController extends Controller
 {
     public function __invoke(Request $request): View
     {
-        $roleName = $request->user()->employee?->role?->role_name;
-        $canViewSalesComparison = in_array($roleName, ['Manager', 'Admin'], true);
+        $canViewSalesComparison = true;
         $today = Carbon::today();
 
         $startOfDay = Carbon::today();
@@ -25,9 +24,8 @@ class DashboardController extends Controller
             ->where('order_date', '<', $startOfTomorrow)
             ->selectRaw(
                 'COUNT(*) as total_orders, '.
-                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_orders, '.
-                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed_orders',
-                ['Pending', 'Completed'],
+                'SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_orders',
+                ['Pending'],
             )
             ->firstOrFail();
 
@@ -35,7 +33,6 @@ class DashboardController extends Controller
             ->where('payment_date', '>=', $startOfDay)
             ->where('payment_date', '<', $startOfTomorrow)
             ->selectRaw(
-                'COUNT(*) as total_transactions, '.
                 'COALESCE(SUM(amount_paid - change_amount), 0) as sales_today',
             )
             ->firstOrFail();
@@ -43,8 +40,6 @@ class DashboardController extends Controller
         $viewData = [
             'totalOrders' => (int) $ordersToday->total_orders,
             'pendingOrders' => (int) $ordersToday->pending_orders,
-            'completedOrders' => (int) $ordersToday->completed_orders,
-            'totalTransactions' => (int) $paymentsToday->total_transactions,
             'salesToday' => (float) $paymentsToday->sales_today,
             'canViewSalesComparison' => $canViewSalesComparison,
         ];

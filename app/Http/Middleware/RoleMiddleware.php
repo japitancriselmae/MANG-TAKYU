@@ -10,13 +10,13 @@ class RoleMiddleware
 {
     public function handle(Request $request, Closure $next, ...$roles): Response
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect()->route('login');
         }
 
         $user = auth()->user();
 
-        if (!$user->employee || !$user->employee->role) {
+        if (! $user->employee || ! $user->employee->role) {
             abort(403, 'Your account does not have a valid role.');
         }
 
@@ -27,7 +27,7 @@ class RoleMiddleware
             return $next($request);
         }
 
-        if (!in_array($roleName, $roles)) {
+        if (! in_array($roleName, $roles)) {
             abort(403, 'You are not authorized to access this page.');
         }
 

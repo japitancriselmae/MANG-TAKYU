@@ -21,27 +21,11 @@
             'icon' => 'sales',
             'color' => 'emerald',
         ],
-        [
-            'label' => 'Completed Orders',
-            'value' => number_format($completedOrders),
-            'description' => 'Completed today',
-            'icon' => 'completed',
-            'color' => 'blue',
-        ],
-        [
-            'label' => 'Total Transactions',
-            'value' => number_format($totalTransactions),
-            'description' => 'Payments recorded today',
-            'icon' => 'transactions',
-            'color' => 'purple',
-        ],
     ];
 
     $iconColors = [
         'red' => 'bg-red-50 text-[#E31E24]',
         'emerald' => 'bg-emerald-50 text-emerald-600',
-        'blue' => 'bg-blue-50 text-blue-600',
-        'purple' => 'bg-purple-50 text-purple-600',
     ];
 @endphp
 

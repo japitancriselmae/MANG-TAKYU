@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Employee;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\RoleSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -13,10 +14,12 @@ class BootstrapManager extends Command
 {
     protected $signature = 'mang-takyu:bootstrap-manager';
 
-    protected $description = 'Create the initial Manager account when deployment credentials are configured';
+    protected $description = 'Create employee roles and the initial Manager account when deployment credentials are configured';
 
     public function handle(): int
     {
+        $this->call(RoleSeeder::class);
+
         $existingManager = User::query()
             ->whereHas('employee.role', fn ($query) => $query->where('role_name', 'Manager'))
             ->exists();

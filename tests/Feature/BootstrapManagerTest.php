@@ -32,6 +32,8 @@ class BootstrapManagerTest extends TestCase
         $this->assertSame('Manager', $user->employee->role->role_name);
         $this->assertSame('Active', $user->employee->status);
         $this->assertTrue(Hash::check('a-strong-password-123', $user->password));
+        $this->assertDatabaseHas('roles', ['role_name' => 'Cashier']);
+        $this->assertDatabaseHas('roles', ['role_name' => 'Kitchen Staff']);
     }
 
     public function test_missing_credentials_skip_manager_creation(): void
@@ -47,7 +49,7 @@ class BootstrapManagerTest extends TestCase
             ->expectsOutputToContain('Initial Manager credentials are not configured')
             ->assertSuccessful();
 
-        $this->assertDatabaseCount('roles', 0);
+        $this->assertDatabaseCount('roles', 3);
         $this->assertDatabaseCount('employees', 0);
         $this->assertDatabaseCount('users', 0);
     }
@@ -65,7 +67,7 @@ class BootstrapManagerTest extends TestCase
             ->expectsOutputToContain('The password field must be at least 16 characters.')
             ->assertFailed();
 
-        $this->assertDatabaseCount('roles', 0);
+        $this->assertDatabaseCount('roles', 3);
         $this->assertDatabaseCount('employees', 0);
         $this->assertDatabaseCount('users', 0);
     }
@@ -100,6 +102,7 @@ class BootstrapManagerTest extends TestCase
 
         $this->assertDatabaseCount('users', 1);
         $this->assertSame($originalPassword, $user->fresh()->password);
+        $this->assertDatabaseHas('roles', ['role_name' => 'Cashier']);
     }
 
     public function test_explicit_reset_flag_updates_the_configured_manager_password(): void

@@ -7,4 +7,5 @@ return [
         'first_name' => env('INITIAL_MANAGER_FIRST_NAME'),
         'last_name' => env('INITIAL_MANAGER_LAST_NAME'),
     ],
+    'reset_initial_manager_password' => (bool) env('INITIAL_MANAGER_RESET_PASSWORD', false),
 ];

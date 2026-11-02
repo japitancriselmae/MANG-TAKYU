@@ -101,4 +101,81 @@ class BootstrapManagerTest extends TestCase
         $this->assertDatabaseCount('users', 1);
         $this->assertSame($originalPassword, $user->fresh()->password);
     }
+
+    public function test_explicit_reset_flag_updates_the_configured_manager_password(): void
+    {
+        $role = Role::create(['role_name' => 'Manager']);
+        $employee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Existing',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+        $user = User::create([
+            'name' => 'Existing Manager',
+            'email' => 'manager@example.com',
+            'password' => 'old-password',
+            'employee_id' => $employee->employee_id,
+        ]);
+
+        config()->set('deployment.initial_manager', [
+            'email' => 'manager@example.com',
+            'password' => 'new-strong-password-123',
+            'first_name' => 'Existing',
+            'last_name' => 'Manager',
+        ]);
+        config()->set('deployment.reset_initial_manager_password', true);
+
+        $this->artisan('mang-takyu:bootstrap-manager')
+            ->expectsOutputToContain('Configured Manager password reset.')
+            ->assertSuccessful();
+
+        $this->assertTrue(Hash::check('new-strong-password-123', $user->fresh()->password));
+    }
+
+    public function test_explicit_reset_flag_does_not_change_a_non_manager_account(): void
+    {
+        $managerRole = Role::create(['role_name' => 'Manager']);
+        $managerEmployee = Employee::create([
+            'role_id' => $managerRole->role_id,
+            'first_name' => 'Existing',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+        User::create([
+            'name' => 'Existing Manager',
+            'email' => 'manager@example.com',
+            'password' => 'manager-password',
+            'employee_id' => $managerEmployee->employee_id,
+        ]);
+
+        $role = Role::create(['role_name' => 'Cashier']);
+        $employee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Existing',
+            'last_name' => 'Cashier',
+            'status' => 'Active',
+        ]);
+        $user = User::create([
+            'name' => 'Existing Cashier',
+            'email' => 'cashier@example.com',
+            'password' => 'old-password',
+            'employee_id' => $employee->employee_id,
+        ]);
+        $originalPassword = $user->password;
+
+        config()->set('deployment.initial_manager', [
+            'email' => 'cashier@example.com',
+            'password' => 'new-strong-password-123',
+            'first_name' => 'Existing',
+            'last_name' => 'Cashier',
+        ]);
+        config()->set('deployment.reset_initial_manager_password', true);
+
+        $this->artisan('mang-takyu:bootstrap-manager')
+            ->expectsOutputToContain('No Manager account matches INITIAL_MANAGER_EMAIL')
+            ->assertFailed();
+
+        $this->assertSame($originalPassword, $user->fresh()->password);
+    }
 }

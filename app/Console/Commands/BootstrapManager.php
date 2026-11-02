@@ -17,16 +17,20 @@ class BootstrapManager extends Command
 
     public function handle(): int
     {
-        if (User::query()
+        $existingManager = User::query()
             ->whereHas('employee.role', fn ($query) => $query->where('role_name', 'Manager'))
-            ->exists()) {
+            ->exists();
+        $initialManager = config('deployment.initial_manager');
+
+        if ($existingManager && config('deployment.reset_initial_manager_password')) {
+            return $this->resetExistingManagerPassword($initialManager);
+        }
+
+        if ($existingManager) {
             $this->info('A Manager account already exists; no changes were made.');
 
             return self::SUCCESS;
         }
-
-        /** @var array{email: ?string, password: ?string, first_name: ?string, last_name: ?string} $initialManager */
-        $initialManager = config('deployment.initial_manager');
 
         if (collect($initialManager)->every(fn (?string $value): bool => blank($value))) {
             $this->info('Initial Manager credentials are not configured; setup was skipped.');
@@ -67,6 +71,49 @@ class BootstrapManager extends Command
         });
 
         $this->info('Initial Manager account created.');
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param  array{email: ?string, password: ?string, first_name: ?string, last_name: ?string}  $initialManager
+     */
+    private function resetExistingManagerPassword(array $initialManager): int
+    {
+        $validator = Validator::make($initialManager, [
+            'email' => ['required', 'email', 'max:255'],
+            'password' => ['required', 'string', 'min:16', 'max:255'],
+        ]);
+
+        if ($validator->fails()) {
+            foreach ($validator->errors()->all() as $error) {
+                $this->error($error);
+            }
+
+            return self::FAILURE;
+        }
+
+        $manager = User::query()
+            ->where('email', $initialManager['email'])
+            ->whereHas('employee.role', fn ($query) => $query->where('role_name', 'Manager'))
+            ->first();
+
+        if (! $manager) {
+            $this->error('No Manager account matches INITIAL_MANAGER_EMAIL; no password was changed.');
+
+            return self::FAILURE;
+        }
+
+        DB::transaction(function () use ($manager, $initialManager): void {
+            $manager = User::query()
+                ->whereKey($manager->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $manager->password = $initialManager['password'];
+            $manager->save();
+        });
+
+        $this->info('Configured Manager password reset.');
 
         return self::SUCCESS;
     }

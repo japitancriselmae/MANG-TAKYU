@@ -93,27 +93,40 @@ class BootstrapManager extends Command
             return self::FAILURE;
         }
 
-        $manager = User::query()
-            ->where('email', $initialManager['email'])
+        $managers = User::query()
             ->whereHas('employee.role', fn ($query) => $query->where('role_name', 'Manager'))
-            ->first();
+            ->lockForUpdate()
+            ->get();
+        $manager = $managers
+            ->first(fn (User $user): bool => $user->email === $initialManager['email']);
 
-        if (! $manager) {
-            $this->error('No Manager account matches INITIAL_MANAGER_EMAIL; no password was changed.');
+        if (! $manager && User::query()
+            ->where('email', $initialManager['email'])
+            ->exists()) {
+            $this->error('INITIAL_MANAGER_EMAIL belongs to a different account; no password was changed.');
 
             return self::FAILURE;
         }
+
+        if (! $manager && $managers->count() !== 1) {
+            $this->error('Cannot identify a single Manager account for recovery; no account was changed.');
+
+            return self::FAILURE;
+        }
+
+        $manager ??= $managers->sole();
 
         DB::transaction(function () use ($manager, $initialManager): void {
             $manager = User::query()
                 ->whereKey($manager->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            $manager->email = $initialManager['email'];
             $manager->password = $initialManager['password'];
             $manager->save();
         });
 
-        $this->info('Configured Manager password reset.');
+        $this->info('Configured Manager account credentials reset.');
 
         return self::SUCCESS;
     }

@@ -127,10 +127,47 @@ class BootstrapManagerTest extends TestCase
         config()->set('deployment.reset_initial_manager_password', true);
 
         $this->artisan('mang-takyu:bootstrap-manager')
-            ->expectsOutputToContain('Configured Manager password reset.')
+            ->expectsOutputToContain('Configured Manager account credentials reset.')
             ->assertSuccessful();
 
-        $this->assertTrue(Hash::check('new-strong-password-123', $user->fresh()->password));
+        $user = $user->fresh();
+
+        $this->assertSame('manager@example.com', $user->email);
+        $this->assertTrue(Hash::check('new-strong-password-123', $user->password));
+    }
+
+    public function test_explicit_reset_flag_recovers_the_only_manager_using_the_configured_email(): void
+    {
+        $role = Role::create(['role_name' => 'Manager']);
+        $employee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Existing',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+        $user = User::create([
+            'name' => 'Existing Manager',
+            'email' => 'old-manager@example.com',
+            'password' => 'old-password',
+            'employee_id' => $employee->employee_id,
+        ]);
+
+        config()->set('deployment.initial_manager', [
+            'email' => 'manager@example.com',
+            'password' => 'new-strong-password-123',
+            'first_name' => 'Existing',
+            'last_name' => 'Manager',
+        ]);
+        config()->set('deployment.reset_initial_manager_password', true);
+
+        $this->artisan('mang-takyu:bootstrap-manager')
+            ->expectsOutputToContain('Configured Manager account credentials reset.')
+            ->assertSuccessful();
+
+        $user = $user->fresh();
+
+        $this->assertSame('manager@example.com', $user->email);
+        $this->assertTrue(Hash::check('new-strong-password-123', $user->password));
     }
 
     public function test_explicit_reset_flag_does_not_change_a_non_manager_account(): void
@@ -173,7 +210,7 @@ class BootstrapManagerTest extends TestCase
         config()->set('deployment.reset_initial_manager_password', true);
 
         $this->artisan('mang-takyu:bootstrap-manager')
-            ->expectsOutputToContain('No Manager account matches INITIAL_MANAGER_EMAIL')
+            ->expectsOutputToContain('INITIAL_MANAGER_EMAIL belongs to a different account')
             ->assertFailed();
 
         $this->assertSame($originalPassword, $user->fresh()->password);

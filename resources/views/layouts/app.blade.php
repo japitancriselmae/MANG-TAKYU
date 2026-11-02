@@ -6,27 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'Dashboard') — Mang Takyu</title>
     <link rel="icon" type="image/png" href="{{ asset('images/mang-takyu-logo.png') }}">
-
-    {{-- CDN Tailwind — works without any build step --}}
-    <script src="{{ asset('js/tailwind.js') }}"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            black: '#0B0B0B',
-                            red:   '#E31E24',
-                            amber: '#F5A623',
-                        },
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                },
-            },
-        };
-    </script>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     {{-- Inter font --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">

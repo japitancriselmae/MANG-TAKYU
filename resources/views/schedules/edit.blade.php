@@ -7,10 +7,21 @@
 @section('content')
 
 <div class="max-w-2xl mx-auto">
+    <div class="mb-5">
+        <a href="{{ route('schedules.show', $schedule) }}" class="text-sm font-semibold text-slate-500 transition hover:text-slate-800">
+            &larr; Back to schedule details
+        </a>
+    </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8">
 
         <form method="POST" action="{{ route('schedules.update', $schedule->schedule_id) }}" class="space-y-5">
             @csrf @method('PUT')
+
+            @if ($errors->has('schedule'))
+                <div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {{ $errors->first('schedule') }}
+                </div>
+            @endif
 
             <div>
                 <label for="employee_id" class="block text-sm font-semibold text-slate-700 mb-2">Employee</label>
@@ -29,25 +40,31 @@
             <div>
                 <label for="schedule_date" class="block text-sm font-semibold text-slate-700 mb-2">Date</label>
                 <input type="date" name="schedule_date" id="schedule_date" required
-                       value="{{ old('schedule_date', \Carbon\Carbon::parse($schedule->schedule_date)->format('Y-m-d')) }}"
+                       @php $defaultScheduleDate = \Carbon\Carbon::parse($schedule->schedule_date)->format('Y-m-d'); @endphp
+                       value="{{ old('schedule_date', $defaultScheduleDate) }}"
                        class="w-full px-4 py-3 border border-slate-200 rounded-xl
                               focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                @error('schedule_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label for="start_time" class="block text-sm font-semibold text-slate-700 mb-2">Start Time</label>
                     <input type="time" name="start_time" id="start_time" required
-                           value="{{ old('start_time', \Carbon\Carbon::parse($schedule->start_time)->format('H:i')) }}"
+                           @php $defaultStartTime = $schedule->start_time ? \Carbon\Carbon::parse($schedule->start_time)->format('H:i') : ''; @endphp
+                           value="{{ old('start_time', $defaultStartTime) }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('start_time')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label for="end_time" class="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
                     <input type="time" name="end_time" id="end_time" required
-                           value="{{ old('end_time', \Carbon\Carbon::parse($schedule->end_time)->format('H:i')) }}"
+                           @php $defaultEndTime = $schedule->end_time ? \Carbon\Carbon::parse($schedule->end_time)->format('H:i') : ''; @endphp
+                           value="{{ old('end_time', $defaultEndTime) }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('end_time')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
 
@@ -67,7 +84,7 @@
                                shadow-lg shadow-red-500/20 transition">
                     Update Schedule
                 </button>
-                <a href="{{ route('schedules.index') }}"
+                <a href="{{ route('schedules.index', ['week_start_date' => $schedule->schedule_date->copy()->startOfWeek()->toDateString()]) }}"
                    class="px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold
                           hover:bg-slate-50 transition">
                     Cancel

@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
@@ -90,7 +92,7 @@ class UserController extends Controller
         return view('users.create', compact('employees', 'allowed', 'selectedEmployeeId'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $allowed = $this->allowedRoles();
 
@@ -136,12 +138,22 @@ class UserController extends Controller
 
         $employee = Employee::findOrFail($validated['employee_id']);
 
-        User::create([
-            'name' => trim($employee->first_name.' '.$employee->last_name),
-            'email' => strtolower($validated['email']),
-            'password' => Hash::make($validated['password']),
-            'employee_id' => $employee->employee_id,
-        ]);
+        DB::transaction(function () use ($employee, $validated, $activityLogger): void {
+            $user = User::create([
+                'name' => trim($employee->first_name.' '.$employee->last_name),
+                'email' => strtolower($validated['email']),
+                'password' => Hash::make($validated['password']),
+                'employee_id' => $employee->employee_id,
+            ]);
+
+            $activityLogger->record(
+                action: 'user.created',
+                module: 'users',
+                description: 'User account created.',
+                subject: $user,
+                newValues: $this->auditValues($user),
+            );
+        });
 
         return redirect()
             ->route('employees.index')
@@ -166,7 +178,7 @@ class UserController extends Controller
         return view('users.edit', compact('user'));
     }
 
-    public function update(Request $request, User $user)
+    public function update(Request $request, User $user, ActivityLogger $activityLogger)
     {
         if (! $this->canManage($user)) {
             abort(403, 'You are not authorized to edit this account.');
@@ -183,30 +195,69 @@ class UserController extends Controller
             'password' => ['nullable', 'string', 'min:6', 'confirmed'],
         ]);
 
-        $user->name = $validated['name'];
-        $user->email = strtolower($validated['email']);
+        $oldValues = $this->auditValues($user);
+        $passwordChanged = ! empty($validated['password']);
 
-        if (! empty($validated['password'])) {
-            $user->password = Hash::make($validated['password']);
-        }
+        DB::transaction(function () use ($user, $validated, $passwordChanged, $oldValues, $activityLogger): void {
+            $user->name = $validated['name'];
+            $user->email = strtolower($validated['email']);
 
-        $user->save();
+            if ($passwordChanged) {
+                $user->password = Hash::make($validated['password']);
+            }
+
+            $user->save();
+
+            $activityLogger->record(
+                action: 'user.updated',
+                module: 'users',
+                description: 'User account information updated.',
+                subject: $user,
+                oldValues: $oldValues,
+                newValues: [...$this->auditValues($user), 'password_changed' => $passwordChanged],
+            );
+        });
 
         return redirect()
             ->route('employees.index')
             ->with('success', 'User account updated successfully.');
     }
 
-    public function destroy(User $user)
+    public function destroy(User $user, ActivityLogger $activityLogger)
     {
         if (! $this->canManage($user)) {
             abort(403, 'You are not authorized to delete this account.');
         }
 
-        $user->delete();
+        DB::transaction(function () use ($user, $activityLogger): void {
+            $oldValues = $this->auditValues($user);
+            $user->delete();
+
+            $activityLogger->record(
+                action: 'user.deleted',
+                module: 'users',
+                description: 'User account deleted.',
+                subject: $user,
+                oldValues: $oldValues,
+            );
+        });
 
         return redirect()
             ->route('employees.index')
             ->with('success', 'User account deleted successfully.');
+    }
+
+    /**
+     * @return array{ name: string, employee_id: int|null, role: string|null }
+     */
+    private function auditValues(User $user): array
+    {
+        $user->loadMissing('employee.role');
+
+        return [
+            'name' => $user->name,
+            'employee_id' => $user->employee_id,
+            'role' => $user->employee?->role?->role_name,
+        ];
     }
 }

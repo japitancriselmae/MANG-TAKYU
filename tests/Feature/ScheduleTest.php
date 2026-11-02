@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Attendance;
 use App\Models\Employee;
 use App\Models\Role;
@@ -34,7 +35,17 @@ class ScheduleTest extends TestCase
             'employee_id' => $employee->employee_id,
         ]);
 
-        return [$user, $employee];
+        $staffRole = Role::firstOrCreate([
+            'role_name' => 'Kitchen Staff',
+        ]);
+        $staffEmployee = Employee::create([
+            'role_id' => $staffRole->role_id,
+            'first_name' => 'Test',
+            'last_name' => 'Kitchen Staff',
+            'status' => 'Active',
+        ]);
+
+        return [$user, $staffEmployee];
     }
 
     public function test_manager_can_view_schedules(): void
@@ -64,7 +75,7 @@ class ScheduleTest extends TestCase
                 'status' => 'Active',
             ]);
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
 
         $this->assertDatabaseHas('schedules', [
             'employee_id' => $employee->employee_id,
@@ -72,6 +83,127 @@ class ScheduleTest extends TestCase
             'start_time' => '08:00',
             'end_time' => '17:00',
             'status' => 'Active',
+        ]);
+        $activityLog = ActivityLog::query()
+            ->where('action', 'schedule.shift_assigned')
+            ->firstOrFail();
+        $this->assertSame('scheduling', $activityLog->module);
+        $this->assertSame($user->id, $activityLog->user_id);
+    }
+
+    public function test_manager_schedule_assignment_and_change_are_logged(): void
+    {
+        [$user, $employee] = $this->createManager();
+
+        $this->actingAs($user)
+            ->post('/schedules', [
+                'employee_id' => $employee->employee_id,
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
+                'start_time' => '08:00',
+                'end_time' => '17:00',
+                'status' => 'Active',
+            ])
+            ->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
+
+        $schedule = Schedule::query()->firstOrFail();
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'schedule.shift_assigned',
+            'user_id' => $user->id,
+        ]);
+
+        $this->actingAs($user)
+            ->put("/schedules/{$schedule->schedule_id}", [
+                'employee_id' => $employee->employee_id,
+                'schedule_date' => '2026-09-19',
+                'start_time' => '09:00',
+                'end_time' => '18:00',
+                'status' => 'Active',
+            ])
+            ->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'schedule.shift_changed',
+            'user_id' => $user->id,
+        ]);
+    }
+
+    public function test_manager_and_admin_roles_are_not_schedulable(): void
+    {
+        [$user, $staffEmployee] = $this->createManager();
+        $adminRole = Role::create(['role_name' => 'Admin']);
+        $adminEmployee = Employee::create([
+            'role_id' => $adminRole->role_id,
+            'first_name' => 'System',
+            'last_name' => 'Admin',
+            'status' => 'Active',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/schedules/create')
+            ->assertDontSee('value="'.$user->employee_id.'"', false)
+            ->assertDontSee('value="'.$adminEmployee->employee_id.'"', false)
+            ->assertSee('value="'.$staffEmployee->employee_id.'"', false);
+
+        $user->update(['name' => 'Schedule Operator']);
+
+        $this->actingAs($user)
+            ->get('/schedules')
+            ->assertDontSee('Test Manager')
+            ->assertDontSee('System Admin')
+            ->assertSee('Kitchen Staff');
+
+        $response = $this->actingAs($user)
+            ->post('/schedules', [
+                'employee_id' => $user->employee_id,
+                'start_date' => '2026-09-18',
+                'end_date' => '2026-09-18',
+                'start_time' => '08:00',
+                'end_time' => '17:00',
+                'status' => 'Active',
+            ]);
+
+        $response->assertSessionHasErrors([
+            'employee_id' => 'Only staff members can be scheduled.',
+        ]);
+        $this->assertDatabaseCount('schedules', 0);
+    }
+
+    public function test_manager_cannot_update_a_schedule_to_assign_it_to_an_admin(): void
+    {
+        [$user, $staffEmployee] = $this->createManager();
+        $adminRole = Role::create(['role_name' => 'Admin']);
+        $adminEmployee = Employee::create([
+            'role_id' => $adminRole->role_id,
+            'first_name' => 'System',
+            'last_name' => 'Admin',
+            'status' => 'Active',
+        ]);
+        $schedule = Schedule::create([
+            'employee_id' => $staffEmployee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->put("/schedules/{$schedule->schedule_id}", [
+                'employee_id' => $adminEmployee->employee_id,
+                'schedule_date' => '2026-09-18',
+                'start_time' => '09:00',
+                'end_time' => '18:00',
+                'status' => 'Active',
+            ]);
+
+        $response->assertSessionHasErrors([
+            'employee_id' => 'Only staff members can be scheduled.',
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'schedule_id' => $schedule->schedule_id,
+            'employee_id' => $staffEmployee->employee_id,
+            'start_time' => '08:00:00',
+            'end_time' => '17:00:00',
         ]);
     }
 
@@ -96,7 +228,7 @@ class ScheduleTest extends TestCase
                 'status' => 'Active',
             ]);
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
 
         $this->assertDatabaseHas('schedules', [
             'schedule_id' => $schedule->schedule_id,
@@ -120,7 +252,7 @@ class ScheduleTest extends TestCase
         $response = $this->actingAs($user)
             ->delete("/schedules/{$schedule->schedule_id}");
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
 
         $this->assertDatabaseMissing('schedules', [
             'schedule_id' => $schedule->schedule_id,
@@ -254,7 +386,7 @@ class ScheduleTest extends TestCase
                 'status' => 'Active',
             ]);
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
 
         $this->assertDatabaseCount('schedules', 2);
     }
@@ -319,7 +451,7 @@ class ScheduleTest extends TestCase
                 'status' => 'Active',
             ]);
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-09-14']));
 
         $this->assertDatabaseCount('schedules', 2);
     }
@@ -337,7 +469,7 @@ class ScheduleTest extends TestCase
             'status' => 'Active',
         ]);
 
-        $response->assertRedirect('/schedules');
+        $response->assertRedirect(route('schedules.index', ['week_start_date' => '2026-10-12']));
         $response->assertSessionHas('success', 'Schedule created for 6 days.');
         $this->assertDatabaseCount('schedules', 6);
         $this->assertDatabaseHas('schedules', [

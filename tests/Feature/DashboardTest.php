@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Employee;
+use App\Models\Ingredient;
+use App\Models\Inventory;
+use App\Models\InventoryCategory;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Role;
+use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -116,6 +120,75 @@ class DashboardTest extends TestCase
 
         $response->assertSee('Sales Comparison');
         $response->assertViewHas('salesComparison');
+    }
+
+    public function test_manager_dashboard_shows_inventory_metrics_and_recent_activity(): void
+    {
+        $manager = $this->createEmployeeUser('Manager');
+        $category = InventoryCategory::create(['name' => 'Proteins']);
+        $lowStockIngredient = Ingredient::create([
+            'inventory_category_id' => $category->id,
+            'ingredient_name' => 'Chicken',
+            'unit' => 'kg',
+            'minimum_stock' => 5,
+            'purchase_price' => 3,
+            'status' => 'Active',
+        ]);
+        $outOfStockIngredient = Ingredient::create([
+            'ingredient_name' => 'Beef',
+            'unit' => 'kg',
+            'minimum_stock' => 2,
+            'purchase_price' => 5,
+            'status' => 'Active',
+        ]);
+        $normalStockIngredient = Ingredient::create([
+            'ingredient_name' => 'Rice',
+            'unit' => 'kg',
+            'minimum_stock' => 2,
+            'purchase_price' => 2,
+            'status' => 'Active',
+        ]);
+
+        foreach ([
+            [$lowStockIngredient, 5],
+            [$outOfStockIngredient, 0],
+            [$normalStockIngredient, 7],
+        ] as [$ingredient, $quantity]) {
+            Inventory::create([
+                'ingredient_id' => $ingredient->ingredient_id,
+                'quantity' => $quantity,
+                'minimum_stock' => $ingredient->minimum_stock,
+                'last_updated' => now(),
+            ]);
+        }
+
+        StockMovement::create([
+            'ingredient_id' => $lowStockIngredient->ingredient_id,
+            'user_id' => $manager->id,
+            'movement_type' => 'Stock In',
+            'quantity' => 1,
+            'movement_date' => now(),
+            'reference' => 'Recent delivery',
+        ]);
+
+        $response = $this->actingAs($manager)->get(route('dashboard'));
+
+        $response->assertViewHas('inventoryOverview', [
+            'products' => 0,
+            'categories' => 1,
+            'tracked_items' => 3,
+            'total_stock' => 12.0,
+            'low_stock' => 1,
+            'out_of_stock' => 1,
+            'valuation' => 29.0,
+        ]);
+        $response->assertViewHas('recentInventoryActivities', function ($activities): bool {
+            return $activities->count() === 1
+                && $activities->first()->reference === 'Recent delivery';
+        });
+        $response->assertSee('Inventory overview')
+            ->assertSee('Recent stock activity')
+            ->assertSee('Estimated inventory value');
     }
 
     public function test_dashboard_compares_selected_days_with_the_previous_equal_length_period(): void

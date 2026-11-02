@@ -90,6 +90,108 @@
         @endforeach
     </section>
 
+    @isset($inventoryOverview)
+        <section aria-labelledby="inventory-overview-title" class="flex flex-col gap-5">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                    <h2 id="inventory-overview-title" class="text-xl font-bold text-slate-900">Inventory overview</h2>
+                    <p class="mt-1 text-sm text-slate-500">Live stock levels and recent movements.</p>
+                </div>
+                <a href="{{ route('inventories.index') }}" class="text-sm font-semibold text-[#E31E24] hover:underline">Open inventory →</a>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                <a href="{{ route('products.index') }}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-red-200">
+                    <p class="text-xs font-medium text-slate-500">Menu products</p>
+                    <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($inventoryOverview['products']) }}</p>
+                </a>
+                <a href="{{ route('inventory-categories.index') }}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-red-200">
+                    <p class="text-xs font-medium text-slate-500">Categories</p>
+                    <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($inventoryOverview['categories']) }}</p>
+                </a>
+                <a href="{{ route('inventories.index') }}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-red-200">
+                    <p class="text-xs font-medium text-slate-500">Tracked items</p>
+                    <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($inventoryOverview['tracked_items']) }}</p>
+                </a>
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-medium text-slate-500">Stock units</p>
+                    <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format($inventoryOverview['total_stock'], 2) }}</p>
+                </div>
+                <a href="{{ route('stock-notifications.index') }}" class="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm transition hover:border-amber-300">
+                    <p class="text-xs font-medium text-slate-500">Low stock</p>
+                    <p class="mt-2 text-2xl font-bold text-amber-700">{{ number_format($inventoryOverview['low_stock']) }}</p>
+                </a>
+                <a href="{{ route('stock-notifications.index') }}" class="rounded-2xl border border-red-100 bg-white p-4 shadow-sm transition hover:border-red-300">
+                    <p class="text-xs font-medium text-slate-500">Out of stock</p>
+                    <p class="mt-2 text-2xl font-bold text-red-700">{{ number_format($inventoryOverview['out_of_stock']) }}</p>
+                </a>
+            </div>
+
+            <div class="grid gap-5 xl:grid-cols-5">
+                <section aria-labelledby="stock-movement-title" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 id="stock-movement-title" class="font-bold text-slate-900">Stock movement</h3>
+                            <p class="mt-1 text-xs text-slate-500">Daily units received and issued · last 7 days</p>
+                        </div>
+                        <a href="{{ route('stock-movements.index') }}" class="text-xs font-semibold text-[#E31E24]">View history →</a>
+                    </div>
+                    @php
+                        $movementMaximum = max(1, ...array_map(
+                            fn (array $day): float => max($day['stock_in'], $day['stock_out']),
+                            $stockMovementOverview
+                        ));
+                    @endphp
+                    <div class="mt-6 grid grid-cols-7 gap-2 sm:gap-4">
+                        @foreach ($stockMovementOverview as $day)
+                            <div class="flex flex-col items-center gap-2" title="{{ $day['label'] }}: {{ number_format($day['stock_in'], 2) }} in / {{ number_format($day['stock_out'], 2) }} out">
+                                <div class="flex h-24 w-full items-end justify-center gap-1">
+                                    <span class="max-w-3 min-h-1 flex-1 rounded-t bg-emerald-500" style="height: {{ $day['stock_in'] > 0 ? max(5, round($day['stock_in'] / $movementMaximum * 100)) : 3 }}%"></span>
+                                    <span class="max-w-3 min-h-1 flex-1 rounded-t bg-[#E31E24]" style="height: {{ $day['stock_out'] > 0 ? max(5, round($day['stock_out'] / $movementMaximum * 100)) : 3 }}%"></span>
+                                </div>
+                                <span class="text-xs text-slate-500">{{ $day['label'] }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div class="mt-4 flex gap-4 text-xs text-slate-500">
+                        <span class="inline-flex items-center gap-2"><i class="h-2 w-2 rounded-full bg-emerald-500"></i>Stock in</span>
+                        <span class="inline-flex items-center gap-2"><i class="h-2 w-2 rounded-full bg-[#E31E24]"></i>Stock out</span>
+                    </div>
+                </section>
+
+                <section aria-labelledby="recent-stock-activity-title" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 id="recent-stock-activity-title" class="font-bold text-slate-900">Recent stock activity</h3>
+                            <p class="mt-1 text-xs text-slate-500">Latest stock transactions</p>
+                        </div>
+                        <a href="{{ route('reports.inventory') }}" class="text-xs font-semibold text-[#E31E24]">Reports →</a>
+                    </div>
+                    <div class="mt-4 divide-y divide-slate-100">
+                        @forelse ($recentInventoryActivities as $activity)
+                            @php
+                                $activityIsPositive = (float) $activity->quantity > 0;
+                            @endphp
+                            <div class="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm font-semibold text-slate-800">{{ $activity->ingredient->ingredient_name ?? 'Stock item' }}</p>
+                                    <p class="mt-1 text-xs text-slate-500">{{ $activity->movement_type }} · {{ $activity->movement_date?->format('M j, g:i A') }}</p>
+                                </div>
+                                <span class="shrink-0 text-sm font-bold tabular-nums {{ $activityIsPositive ? 'text-emerald-600' : 'text-red-600' }}">{{ $activityIsPositive ? '+' : '' }}{{ number_format((float) $activity->quantity, 2) }}</span>
+                            </div>
+                        @empty
+                            <p class="py-8 text-center text-sm text-slate-500">No stock movements recorded yet.</p>
+                        @endforelse
+                    </div>
+                    <div class="mt-5 border-t border-slate-100 pt-4">
+                        <p class="text-xs font-medium text-slate-500">Estimated inventory value</p>
+                        <p class="mt-1 text-xl font-bold text-slate-900">₱{{ number_format($inventoryOverview['valuation'], 2) }}</p>
+                    </div>
+                </section>
+            </div>
+        </section>
+    @endisset
+
     @if ($canViewSalesComparison)
     <section aria-labelledby="sales-comparison-title" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

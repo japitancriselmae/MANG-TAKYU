@@ -50,17 +50,40 @@ class AttendanceController extends Controller
 
         if ($isManagerLike) {
             $now = Carbon::now();
+            $today = $now->toDateString();
+            $yesterday = $now->copy()->subDay()->toDateString();
+            $currentTime = $now->format('H:i:s');
 
             $absentEmployees = Employee::query()
                 ->with('role')
                 ->where('status', 'Active')
-                ->whereHas('schedules', function ($query) use ($now): void {
-                    $query->whereDate('schedule_date', $now->toDateString())
-                        ->where('status', 'Active')
-                        ->where('start_time', '<=', $now->format('H:i:s'));
+                ->whereHas('schedules', function ($query) use ($today, $yesterday, $currentTime): void {
+                    $query->where('status', 'Active')
+                        ->whereNotNull('start_time')
+                        ->whereNotNull('end_time')
+                        ->where(function ($query) use ($today, $yesterday, $currentTime): void {
+                            $query->where(function ($query) use ($today, $currentTime): void {
+                                $query->whereDate('schedule_date', $today)
+                                    ->where('start_time', '<=', $currentTime);
+                            })->orWhere(function ($query) use ($yesterday, $currentTime): void {
+                                $query->whereDate('schedule_date', $yesterday)
+                                    ->whereColumn('end_time', '<', 'start_time')
+                                    ->where('end_time', '>', $currentTime);
+                            });
+                        });
                 })
-                ->whereDoesntHave('attendances', function ($query) use ($now): void {
-                    $query->whereDate('date', $now->toDateString());
+                ->whereDoesntHave('attendances', function ($query) use ($today, $yesterday, $currentTime): void {
+                    $query->where(function ($query) use ($today, $yesterday, $currentTime): void {
+                        $query->whereDate('date', $today)
+                            ->orWhere(function ($query) use ($yesterday, $currentTime): void {
+                                $query->whereDate('date', $yesterday)
+                                    ->whereHas('schedule', function ($scheduleQuery) use ($yesterday, $currentTime): void {
+                                        $scheduleQuery->whereDate('schedule_date', $yesterday)
+                                            ->whereColumn('end_time', '<', 'start_time')
+                                            ->where('end_time', '>', $currentTime);
+                                    });
+                            });
+                    });
                 })
                 ->orderBy('first_name')
                 ->orderBy('last_name')
@@ -88,12 +111,17 @@ class AttendanceController extends Controller
         $employeeId = $user->employee_id;
         $today = Carbon::today();
 
-        $schedule = Schedule::where('employee_id', $employeeId)
-            ->whereDate('schedule_date', $today)
+        $schedule = Schedule::query()
+            ->where('employee_id', $employeeId)
+            ->whereDate('schedule_date', '>=', $today->copy()->subDay()->toDateString())
+            ->whereDate('schedule_date', '<=', $today->toDateString())
             ->where('status', 'Active')
-            ->where('end_time', '>', now()->format('H:i:s'))
+            ->whereNotNull('start_time')
+            ->whereNotNull('end_time')
+            ->orderBy('schedule_date')
             ->orderBy('start_time')
-            ->first();
+            ->get()
+            ->first(fn (Schedule $schedule): bool => $schedule->endsAt()?->greaterThan(now()) ?? false);
 
         if (! $schedule) {
             return back()->withErrors([
@@ -102,7 +130,10 @@ class AttendanceController extends Controller
         }
 
         $existing = Attendance::where('employee_id', $employeeId)
-            ->whereDate('date', $today)
+            ->where(function ($query) use ($today, $schedule): void {
+                $query->whereDate('date', $today->toDateString())
+                    ->orWhere('schedule_id', $schedule->schedule_id);
+            })
             ->first();
 
         if ($existing) {
@@ -113,9 +144,12 @@ class AttendanceController extends Controller
 
         $now = now();
 
-        $scheduleStart = Carbon::parse(
-            $today->format('Y-m-d').' '.$schedule->start_time
-        );
+        $scheduleStart = $schedule->startsAt();
+        if (! $scheduleStart) {
+            return back()->withErrors([
+                'attendance' => 'The scheduled shift does not have a valid start time.',
+            ]);
+        }
 
         $lateMinutes = 0;
         if ($now->greaterThan($scheduleStart)) {
@@ -200,11 +234,12 @@ class AttendanceController extends Controller
 
         $now = now();
 
-        $scheduleEnd = Carbon::parse(
-            Carbon::parse($attendance->date)->format('Y-m-d')
-                .' '
-                .$attendance->schedule->end_time
-        );
+        $scheduleEnd = $attendance->schedule->endsAt();
+        if (! $scheduleEnd) {
+            return back()->withErrors([
+                'attendance' => 'The scheduled shift does not have a valid end time.',
+            ]);
+        }
 
         $undertimeMinutes = 0;
         if ($now->lessThan($scheduleEnd)) {

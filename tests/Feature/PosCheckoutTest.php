@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CookingBatch;
 use App\Models\Employee;
 use App\Models\Ingredient;
@@ -64,6 +65,13 @@ class PosCheckoutTest extends TestCase
         $this->assertDatabaseHas('inventories', [
             'ingredient_id' => $product->productIngredients()->value('ingredient_id'),
             'quantity' => 98,
+        ]);
+        $this->assertDatabaseHas('stock_movements', [
+            'ingredient_id' => $product->productIngredients()->value('ingredient_id'),
+            'user_id' => $cashier->id,
+            'movement_type' => 'Stock Out',
+            'quantity' => -2,
+            'reference' => 'Order #'.$order->order_id,
         ]);
 
         $this->actingAs($cashier)
@@ -379,6 +387,14 @@ class PosCheckoutTest extends TestCase
         $this->assertSame('Paid', $order->fresh()->status);
         $this->assertNotNull($payment->gcash_proof_path);
         Storage::disk('local')->assertExists($payment->gcash_proof_path);
+
+        $paymentLog = ActivityLog::query()
+            ->where('action', 'payment.recorded')
+            ->firstOrFail();
+        $this->assertSame([
+            'order_id' => $order->order_id,
+            'payment_method' => 'GCash',
+        ], $paymentLog->new_values);
     }
 
     public function test_paid_pending_order_can_be_edited(): void

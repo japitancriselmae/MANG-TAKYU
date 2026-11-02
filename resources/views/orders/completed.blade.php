@@ -46,6 +46,10 @@
         <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
             <span class="inline-flex items-center gap-2 rounded-full border-2 px-4 py-1.5 text-sm font-bold {{ $badge }}">{{ $order->status }}</span>
         </div>
+        <p class="mt-3 text-sm font-semibold text-slate-700">
+            Chicken preparation preference:
+            {{ $order->is_fresh_chicken ? 'Freshly Cooked Chicken' : 'Available Cooked Chicken' }}
+        </p>
     </div>
 
     {{-- ============ FRESH CHICKEN TIMER ============ --}}

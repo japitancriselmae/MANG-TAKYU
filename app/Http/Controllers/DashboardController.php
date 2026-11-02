@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Inventory;
+use App\Models\InventoryCategory;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Product;
+use App\Models\StockMovement;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -43,6 +47,59 @@ class DashboardController extends Controller
             'salesToday' => (float) $paymentsToday->sales_today,
             'canViewSalesComparison' => $canViewSalesComparison,
         ];
+
+        $roleName = $request->user()?->employee?->role?->role_name;
+
+        if (in_array($roleName, ['Admin', 'Manager'], true)) {
+            $inventoryOverview = Inventory::query()
+                ->selectRaw('COUNT(*) as tracked_items')
+                ->selectRaw('COALESCE(SUM(quantity), 0) as total_stock')
+                ->selectRaw('SUM(CASE WHEN quantity > 0 AND quantity <= minimum_stock THEN 1 ELSE 0 END) as low_stock')
+                ->selectRaw('SUM(CASE WHEN quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock')
+                ->firstOrFail();
+
+            $inventoryValue = Inventory::query()
+                ->join('ingredients', 'inventories.ingredient_id', '=', 'ingredients.ingredient_id')
+                ->selectRaw('COALESCE(SUM(inventories.quantity * ingredients.purchase_price), 0) as amount')
+                ->value('amount');
+
+            $movementTotals = StockMovement::query()
+                ->where('movement_date', '>=', $today->copy()->subDays(6))
+                ->selectRaw('DATE(movement_date) as movement_day')
+                ->selectRaw('COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0) as stock_in')
+                ->selectRaw('COALESCE(SUM(CASE WHEN quantity < 0 THEN -quantity ELSE 0 END), 0) as stock_out')
+                ->groupByRaw('DATE(movement_date)')
+                ->get()
+                ->keyBy('movement_day');
+
+            $stockMovementOverview = [];
+
+            for ($day = $today->copy()->subDays(6); $day->lessThanOrEqualTo($today); $day->addDay()) {
+                $movement = $movementTotals->get($day->toDateString());
+                $stockMovementOverview[] = [
+                    'label' => $day->format('D'),
+                    'stock_in' => (float) ($movement?->stock_in ?? 0),
+                    'stock_out' => (float) ($movement?->stock_out ?? 0),
+                ];
+            }
+
+            $viewData['inventoryOverview'] = [
+                'products' => Product::count(),
+                'categories' => InventoryCategory::count(),
+                'tracked_items' => (int) $inventoryOverview->tracked_items,
+                'total_stock' => (float) $inventoryOverview->total_stock,
+                'low_stock' => (int) $inventoryOverview->low_stock,
+                'out_of_stock' => (int) $inventoryOverview->out_of_stock,
+                'valuation' => (float) $inventoryValue,
+            ];
+            $viewData['stockMovementOverview'] = $stockMovementOverview;
+            $viewData['recentInventoryActivities'] = StockMovement::query()
+                ->with(['ingredient', 'user'])
+                ->orderByDesc('movement_date')
+                ->orderByDesc('movement_id')
+                ->limit(6)
+                ->get();
+        }
 
         if ($canViewSalesComparison) {
             $defaultWeekStart = $today->copy()->startOfWeek(Carbon::MONDAY);

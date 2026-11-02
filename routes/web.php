@@ -1,12 +1,15 @@
 <?php
 
 use App\Http\Controllers\AccountSettingsController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\InventoryCategoryController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\InventoryReportController;
 use App\Http\Controllers\KitchenBatchNotificationController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
@@ -16,10 +19,12 @@ use App\Http\Controllers\ProductIngredientController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesReportController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\ShiftTemplateController;
 use App\Http\Controllers\StockMovementController;
 use App\Http\Controllers\StockNotificationController;
 use App\Http\Controllers\TransactionReportController;
 use App\Http\Controllers\UserController;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Route;
 
 // =====================================================
@@ -77,6 +82,23 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/', DashboardController::class)->name('dashboard');
 
+    Route::get(
+        '/activity-logs',
+        [ActivityLogController::class, 'index']
+    )->middleware('can:viewAny,'.ActivityLog::class)->name('activity-logs.index');
+
+    Route::get(
+        '/activity-logs/export',
+        [ActivityLogController::class, 'export']
+    )->middleware('can:viewAny,'.ActivityLog::class)->name('activity-logs.export');
+
+    Route::get(
+        '/activity-logs/{activityLog}',
+        [ActivityLogController::class, 'show']
+    )->whereNumber('activityLog')
+        ->middleware('can:view,activityLog')
+        ->name('activity-logs.show');
+
     // =================================================
     // MANAGER ONLY
     // =================================================
@@ -96,6 +118,16 @@ Route::middleware('auth')->group(function () {
             SalesReportController::class
         )->name('reports.sales');
 
+        Route::get(
+            '/reports/inventory',
+            InventoryReportController::class
+        )->name('reports.inventory');
+
+        Route::resource(
+            'inventory-categories',
+            InventoryCategoryController::class
+        );
+
         Route::resource(
             'roles',
             RoleController::class
@@ -109,6 +141,28 @@ Route::middleware('auth')->group(function () {
             'schedules',
             ScheduleController::class
         );
+
+        Route::post(
+            'schedules/generate',
+            [ScheduleController::class, 'generate']
+        )->name('schedules.generate');
+
+        Route::post(
+            'schedules/{schedule}/approve',
+            [ScheduleController::class, 'approve']
+        )->name('schedules.approve');
+
+        Route::post(
+            'schedules/{schedule}/publish',
+            [ScheduleController::class, 'publish']
+        )->name('schedules.publish');
+
+        Route::resource(
+            'shift-templates',
+            ShiftTemplateController::class
+        )->parameters([
+            'shift-templates' => 'template',
+        ]);
 
         Route::resource(
             'products',
@@ -128,7 +182,7 @@ Route::middleware('auth')->group(function () {
         Route::resource(
             'stock-movements',
             StockMovementController::class
-        );
+        )->except(['edit', 'update', 'destroy']);
         Route::resource('users',
             UserController::class
         );

@@ -28,6 +28,11 @@
             </span>
         </a>
 
+        <a href="{{ route('inventory-categories.index') }}"
+           class="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold text-slate-500 transition hover:text-[#E31E24]">
+            Categories
+            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold">{{ $categories->count() }}</span>
+        </a>
         <a href="{{ route('inventories.index', ['tab' => 'ingredients']) }}"
            class="inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition
                   {{ $isIngredientsTab
@@ -52,7 +57,7 @@
 <div class="flex items-center justify-between mb-6">
     <div>
         <h2 class="text-xl font-bold text-slate-800">Stock Items</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ $inventories->count() }} record(s)</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ $inventories->total() }} record(s)</p>
     </div>
     <div class="flex items-center gap-3">
         <a href="{{ route('inventories.create') }}"
@@ -74,6 +79,34 @@
     </div>
 </div>
 
+<form method="GET" action="{{ route('inventories.index') }}" class="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5">
+    <input type="hidden" name="tab" value="stock">
+    <label class="sr-only" for="inventory-search">Search stock</label>
+    <input id="inventory-search" type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search ingredient or SKU"
+           class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-[#E31E24] focus:ring-[#E31E24]/20">
+    <label class="sr-only" for="inventory-category-filter">Category</label>
+    <select id="inventory-category-filter" name="category" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+        <option value="">All categories</option>
+        @foreach ($categories as $category)
+            <option value="{{ $category->id }}" @selected(($filters['category'] ?? '') == $category->id)>{{ $category->name }}</option>
+        @endforeach
+    </select>
+    <label class="sr-only" for="inventory-stock-filter">Stock level</label>
+    <select id="inventory-stock-filter" name="stock_level" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+        <option value="">All stock levels</option>
+        <option value="in-stock" @selected(($filters['stock_level'] ?? '') === 'in-stock')>In stock</option>
+        <option value="low-stock" @selected(($filters['stock_level'] ?? '') === 'low-stock')>Low stock</option>
+        <option value="out-of-stock" @selected(($filters['stock_level'] ?? '') === 'out-of-stock')>Out of stock</option>
+    </select>
+    <label class="sr-only" for="inventory-sort">Sort stock</label>
+    <select id="inventory-sort" name="sort" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+        <option value="name" @selected(($filters['sort'] ?? 'name') === 'name')>Name (A–Z)</option>
+        <option value="quantity" @selected(($filters['sort'] ?? '') === 'quantity')>Lowest stock</option>
+        <option value="updated" @selected(($filters['sort'] ?? '') === 'updated')>Recently updated</option>
+    </select>
+    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">Apply filters</button>
+</form>
+
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
     @if ($inventories->count() > 0)
         <div class="overflow-x-auto">
@@ -81,6 +114,7 @@
                 <thead class="bg-slate-50 border-b border-slate-100">
                     <tr class="text-xs uppercase tracking-wider text-slate-500">
                         <th class="px-6 py-3 font-semibold">Ingredient</th>
+                        <th class="px-6 py-3 font-semibold">Category / SKU</th>
                         <th class="px-6 py-3 font-semibold">Unit</th>
                         <th class="px-6 py-3 font-semibold">Current Qty</th>
                         <th class="px-6 py-3 font-semibold">Minimum Stock</th>
@@ -91,11 +125,16 @@
                 <tbody class="divide-y divide-slate-100">
                     @foreach ($inventories as $item)
                         @php
-                            $isLow = $item->quantity <= $item->ingredient->minimum_stock;
+                            $isOutOfStock = $item->isOutOfStock();
+                            $isLow = $item->isLowStock();
                         @endphp
                         <tr class="hover:bg-slate-50 transition">
                             <td class="px-6 py-4 font-semibold text-slate-800">
                                 {{ $item->ingredient->ingredient_name ?? 'Unknown Ingredient' }}
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="block text-slate-700">{{ $item->ingredient->inventoryCategory->name ?? 'Uncategorized' }}</span>
+                                <span class="font-mono text-xs text-slate-400">{{ $item->ingredient->sku ?: '—' }}</span>
                             </td>
                             <td class="px-6 py-4 text-slate-700">
                                 {{ $item->ingredient->unit ?? '' }}
@@ -104,11 +143,13 @@
                                 {{ number_format($item->quantity, 2) }}
                             </td>
                             <td class="px-6 py-4 text-slate-700">
-                                {{ number_format($item->ingredient->minimum_stock, 2) }}
+                                {{ number_format($item->minimum_stock, 2) }}
                             </td>
                             <td class="px-6 py-4">
-                                @if ($isLow)
-                                    <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-[#E31E24]">Low Stock</span>
+                                @if ($isOutOfStock)
+                                    <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-[#E31E24]">Out of Stock</span>
+                                @elseif ($isLow)
+                                    <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">Low Stock</span>
                                 @else
                                     <span class="inline-block px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Sufficient</span>
                                 @endif
@@ -149,6 +190,9 @@
                 Add First Stock Item
             </a>
         </div>
+    @endif
+    @if ($inventories->hasPages())
+        <div class="border-t border-slate-100 px-6 py-4">{{ $inventories->links() }}</div>
     @endif
 </div>
 

@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductIngredient;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ProductIngredientController extends Controller
 {
@@ -35,7 +37,7 @@ class ProductIngredientController extends Controller
         );
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $validated = $request->validate([
             'product_id' => [
@@ -71,7 +73,17 @@ class ProductIngredientController extends Controller
                 ->withInput();
         }
 
-        ProductIngredient::create($validated);
+        DB::transaction(function () use ($validated, $activityLogger): void {
+            $productIngredient = ProductIngredient::create($validated);
+
+            $activityLogger->record(
+                action: 'product.recipe_item_added',
+                module: 'products',
+                description: 'Ingredient added to product recipe.',
+                subject: $productIngredient,
+                newValues: $this->auditValues($productIngredient),
+            );
+        });
 
         return redirect()
             ->route(
@@ -119,7 +131,8 @@ class ProductIngredientController extends Controller
 
     public function update(
         Request $request,
-        ProductIngredient $productIngredient
+        ProductIngredient $productIngredient,
+        ActivityLogger $activityLogger,
     ) {
         $validated = $request->validate([
             'product_id' => [
@@ -160,7 +173,23 @@ class ProductIngredientController extends Controller
                 ->withInput();
         }
 
-        $productIngredient->update($validated);
+        DB::transaction(function () use ($validated, $productIngredient, $activityLogger): void {
+            $productIngredient = ProductIngredient::query()
+                ->whereKey($productIngredient->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $oldValues = $this->auditValues($productIngredient);
+            $productIngredient->update($validated);
+
+            $activityLogger->record(
+                action: 'product.recipe_item_updated',
+                module: 'products',
+                description: 'Product recipe ingredient updated.',
+                subject: $productIngredient,
+                oldValues: $oldValues,
+                newValues: $this->auditValues($productIngredient),
+            );
+        });
 
         return redirect()
             ->route(
@@ -174,11 +203,23 @@ class ProductIngredientController extends Controller
     }
 
     public function destroy(
-        ProductIngredient $productIngredient
+        ProductIngredient $productIngredient,
+        ActivityLogger $activityLogger,
     ) {
         $productId = $productIngredient->product_id;
 
-        $productIngredient->delete();
+        DB::transaction(function () use ($productIngredient, $activityLogger): void {
+            $oldValues = $this->auditValues($productIngredient);
+            $productIngredient->delete();
+
+            $activityLogger->record(
+                action: 'product.recipe_item_removed',
+                module: 'products',
+                description: 'Ingredient removed from product recipe.',
+                subject: $productIngredient,
+                oldValues: $oldValues,
+            );
+        });
 
         return redirect()
             ->route('products.show', $productId)
@@ -186,5 +227,17 @@ class ProductIngredientController extends Controller
                 'success',
                 'Ingredient removed from product recipe successfully.'
             );
+    }
+
+    /**
+     * @return array{ product_id: int, ingredient_id: int, quantity_required: string }
+     */
+    private function auditValues(ProductIngredient $productIngredient): array
+    {
+        return [
+            'product_id' => $productIngredient->product_id,
+            'ingredient_id' => $productIngredient->ingredient_id,
+            'quantity_required' => (string) $productIngredient->quantity_required,
+        ];
     }
 }

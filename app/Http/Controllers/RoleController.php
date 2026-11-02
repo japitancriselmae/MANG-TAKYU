@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Role;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
@@ -39,7 +41,7 @@ class RoleController extends Controller
         return view('roles.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -57,7 +59,17 @@ class RoleController extends Controller
             ],
         ]);
 
-        Role::create($validated);
+        DB::transaction(function () use ($validated, $activityLogger): void {
+            $role = Role::create($validated);
+
+            $activityLogger->record(
+                action: 'role.created',
+                module: 'administration',
+                description: 'Role created.',
+                subject: $role,
+                newValues: ['role_name' => $role->role_name],
+            );
+        });
 
         return redirect()
             ->route('roles.index')
@@ -90,7 +102,7 @@ class RoleController extends Controller
         return view('roles.edit', compact('role'));
     }
 
-    public function update(Request $request, Role $role)
+    public function update(Request $request, Role $role, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -114,14 +126,30 @@ class RoleController extends Controller
             ],
         ]);
 
-        $role->update($validated);
+        DB::transaction(function () use ($validated, $role, $activityLogger): void {
+            $role = Role::query()
+                ->whereKey($role->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $oldValues = ['role_name' => $role->role_name];
+            $role->update($validated);
+
+            $activityLogger->record(
+                action: 'role.updated',
+                module: 'administration',
+                description: 'Role information updated.',
+                subject: $role,
+                oldValues: $oldValues,
+                newValues: ['role_name' => $role->role_name],
+            );
+        });
 
         return redirect()
             ->route('roles.index')
             ->with('success', 'Role updated successfully.');
     }
 
-    public function destroy(Role $role)
+    public function destroy(Role $role, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -137,7 +165,18 @@ class RoleController extends Controller
             ]);
         }
 
-        $role->delete();
+        DB::transaction(function () use ($role, $activityLogger): void {
+            $oldValues = ['role_name' => $role->role_name];
+            $role->delete();
+
+            $activityLogger->record(
+                action: 'role.deleted',
+                module: 'administration',
+                description: 'Role deleted.',
+                subject: $role,
+                oldValues: $oldValues,
+            );
+        });
 
         return redirect()
             ->route('roles.index')

@@ -11,10 +11,12 @@ class StockMovement extends Model
 
     protected $fillable = [
         'ingredient_id',
+        'user_id',
         'movement_type',
         'quantity',
         'movement_date',
         'reference',
+        'remarks',
     ];
 
     protected function casts(): array
@@ -32,5 +34,10 @@ class StockMovement extends Model
             'ingredient_id',
             'ingredient_id'
         );
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 }

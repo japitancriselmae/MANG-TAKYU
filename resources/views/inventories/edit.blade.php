@@ -14,28 +14,21 @@
 
             <div>
                 <label for="ingredient_id" class="block text-sm font-semibold text-slate-700 mb-2">
-                    Ingredient
+                    Stock item
                 </label>
-                <select name="ingredient_id" id="ingredient_id" required
-                        class="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white
-                               focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
-                    @foreach ($ingredients as $ingredient)
-                        <option value="{{ $ingredient->ingredient_id }}"
-                            {{ old('ingredient_id', $inventory->ingredient_id) == $ingredient->ingredient_id ? 'selected' : '' }}>
-                            {{ $ingredient->ingredient_name }}
-                        </option>
-                    @endforeach
-                </select>
+                <input type="hidden" name="ingredient_id" id="ingredient_id" value="{{ $inventory->ingredient_id }}">
+                <p class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700">{{ $inventory->ingredient->ingredient_name }}</p>
             </div>
 
             <div>
                 <label for="quantity" class="block text-sm font-semibold text-slate-700 mb-2">
-                    Current Quantity
+                    Physically counted quantity
                 </label>
                 <input type="number" name="quantity" id="quantity"
                        value="{{ old('quantity', $inventory->quantity) }}" min="0" step="0.01" required
                        class="w-full px-4 py-3 border border-slate-200 rounded-xl
                               focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                <p class="mt-2 text-xs text-slate-500">The stock difference will be recorded as an auditable adjustment.</p>
             </div>
 
             <div>

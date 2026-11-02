@@ -29,6 +29,19 @@ class CookingBatchNotification extends Notification
         $state = $this->status === 'ready'
             ? 'is ready for service'
             : 'is being cooked';
+        $waitingOrders = '';
+
+        if ($this->waitingOrderCount > 0) {
+            $waitingOrders = ' '.$this->waitingOrderCount.' fresh-chicken order'
+                .($this->waitingOrderCount === 1 ? '' : 's')
+                .' is waiting';
+
+            if ($this->waitingOrderIds !== []) {
+                $waitingOrders .= ' (#'.implode(', #', $this->waitingOrderIds).')';
+            }
+
+            $waitingOrders .= '.';
+        }
 
         return [
             'batch_id' => $this->batchId,
@@ -39,7 +52,7 @@ class CookingBatchNotification extends Notification
             'waiting_order_ids' => $this->waitingOrderIds,
             'started_at' => $this->startedAt,
             'duration_minutes' => $this->durationMinutes,
-            'message' => 'Fresh chicken batch ('.$this->quantity.' pcs) '.$state.'.',
+            'message' => 'Fresh chicken batch ('.$this->quantity.' pcs) '.$state.'.'.$waitingOrders,
         ];
     }
 }

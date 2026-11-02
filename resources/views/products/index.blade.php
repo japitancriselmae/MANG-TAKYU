@@ -49,7 +49,7 @@
     <div class="flex items-center justify-between mb-6">
         <div>
             <h2 class="text-xl font-bold text-slate-800">Products</h2>
-            <p class="text-sm text-slate-500 mt-0.5">{{ $products->count() }} product(s)</p>
+            <p class="text-sm text-slate-500 mt-0.5">{{ $products->total() }} product(s)</p>
         </div>
         <a href="{{ route('products.create') }}"
            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-semibold shadow-lg shadow-red-500/20 transition">
@@ -59,6 +59,27 @@
             Add Product
         </a>
     </div>
+
+    <form method="GET" action="{{ route('products.index') }}" class="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
+        <input type="hidden" name="tab" value="products">
+        <label class="sr-only" for="product-search">Search products</label>
+        <input id="product-search" type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search products"
+               class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-[#E31E24] focus:ring-[#E31E24]/20">
+        <label class="sr-only" for="product-status">Product status</label>
+        <select id="product-status" name="status" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+            <option value="">All statuses</option>
+            <option value="Active" @selected(($filters['status'] ?? '') === 'Active')>Active</option>
+            <option value="Inactive" @selected(($filters['status'] ?? '') === 'Inactive')>Inactive</option>
+        </select>
+        <div class="flex gap-2">
+            <label class="sr-only" for="product-sort">Sort products</label>
+            <select id="product-sort" name="sort" class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+                <option value="name" @selected(($filters['sort'] ?? 'name') === 'name')>Name (A–Z)</option>
+                <option value="price" @selected(($filters['sort'] ?? '') === 'price')>Price (lowest)</option>
+            </select>
+            <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">Filter</button>
+        </div>
+    </form>
 
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         @if ($products->count() > 0)
@@ -123,6 +144,9 @@
                     </tbody>
                 </table>
             </div>
+            @if ($products->hasPages())
+                <div class="border-t border-slate-100 px-6 py-4">{{ $products->links() }}</div>
+            @endif
         </div>
         @else
         <div class="px-6 py-20 text-center">

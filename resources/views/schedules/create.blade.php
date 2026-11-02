@@ -2,15 +2,26 @@
 
 @section('title', 'Add Schedule')
 @section('page-title', 'Add Schedule')
-@section('page-subtitle', 'Assign a work schedule to an employee.')
+@section('page-subtitle', 'Assign a work schedule to a staff member.')
 
 @section('content')
 
 <div class="max-w-2xl mx-auto">
+    <div class="mb-5">
+        <a href="{{ route('schedules.index') }}" class="text-sm font-semibold text-slate-500 hover:text-slate-800">
+            &larr; Back to schedule
+        </a>
+    </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8">
 
         <form method="POST" action="{{ route('schedules.store') }}" class="space-y-5">
             @csrf
+
+            @if ($errors->has('schedule'))
+                <div role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {{ $errors->first('schedule') }}
+                </div>
+            @endif
 
             <div>
                 <label for="employee_id" class="block text-sm font-semibold text-slate-700 mb-2">Employee</label>
@@ -31,16 +42,18 @@
                 <div>
                     <label for="start_date" class="block text-sm font-semibold text-slate-700 mb-2">From Date</label>
                     <input type="date" name="start_date" id="start_date" required
-                           value="{{ old('start_date') }}"
+                           value="{{ old('start_date', now()->toDateString()) }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('start_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label for="end_date" class="block text-sm font-semibold text-slate-700 mb-2">To Date</label>
                     <input type="date" name="end_date" id="end_date" required
-                           value="{{ old('end_date') }}"
+                           value="{{ old('end_date', now()->toDateString()) }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('end_date')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
             <p class="-mt-3 text-xs text-slate-500">Both dates are included. The same shift will be scheduled each day, up to 31 days.</p>
@@ -52,6 +65,7 @@
                            value="{{ old('start_time', '08:00') }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('start_time')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label for="end_time" class="block text-sm font-semibold text-slate-700 mb-2">End Time</label>
@@ -59,6 +73,7 @@
                            value="{{ old('end_time', '17:00') }}"
                            class="w-full px-4 py-3 border border-slate-200 rounded-xl
                                   focus:outline-none focus:border-[#E31E24] focus:ring-2 focus:ring-[#E31E24]/20 transition">
+                    @error('end_time')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>
             </div>
 

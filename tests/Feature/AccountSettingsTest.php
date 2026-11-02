@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Employee;
 use App\Models\Role;
 use App\Models\User;
@@ -43,6 +44,42 @@ class AccountSettingsTest extends TestCase
         $response->assertSessionHas('success', 'Your password has been changed successfully.');
         $this->assertAuthenticatedAs($user);
         $this->assertTrue(Hash::check('new-password-456', $user->fresh()->password));
+    }
+
+    public function test_account_settings_log_only_change_flags_not_credentials(): void
+    {
+        $user = $this->createUserForRole('Manager');
+        $this->actingAs($user);
+
+        $this->put(route('account-settings.update'), [
+            'name' => 'Updated Manager',
+            'email' => 'updated-manager@example.com',
+            'current_password' => 'password123',
+            'password' => 'new-password-456',
+            'password_confirmation' => 'new-password-456',
+        ])->assertRedirect(route('account-settings.edit'));
+
+        $activityLog = ActivityLog::query()
+            ->where('action', 'account.settings_updated')
+            ->firstOrFail();
+        $this->assertSame([
+            'name' => 'Test Manager',
+            'email_changed' => false,
+            'password_changed' => false,
+        ], $activityLog->old_values);
+        $this->assertSame([
+            'name' => 'Updated Manager',
+            'email_changed' => true,
+            'password_changed' => true,
+        ], $activityLog->new_values);
+        $this->assertStringNotContainsString(
+            'new-password-456',
+            $activityLog->toJson()
+        );
+        $this->assertStringNotContainsString(
+            'updated-manager@example.com',
+            $activityLog->toJson()
+        );
     }
 
     public function test_password_cannot_be_changed_with_an_incorrect_current_password(): void

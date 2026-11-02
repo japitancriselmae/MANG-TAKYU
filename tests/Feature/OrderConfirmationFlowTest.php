@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CookingBatch;
 use App\Models\Employee;
 use App\Models\Ingredient;
@@ -56,6 +57,25 @@ class OrderConfirmationFlowTest extends TestCase
             'ingredient_id' => $product->productIngredients()->value('ingredient_id'),
             'quantity' => 98,
         ]);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'order.created',
+            'subject_type' => Order::class,
+            'subject_id' => (string) $order->order_id,
+            'user_id' => $cashier->id,
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'order.completed',
+            'subject_type' => Order::class,
+            'subject_id' => (string) $order->order_id,
+        ]);
+        $paymentLog = ActivityLog::query()
+            ->where('action', 'payment.recorded')
+            ->firstOrFail();
+        $this->assertSame([
+            'order_id' => $order->order_id,
+            'payment_method' => 'Cash',
+        ], $paymentLog->new_values);
     }
 
     public function test_completion_page_shows_order_completed_and_create_another_order(): void

@@ -3,15 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
+use App\Models\ActivityLog;
 use App\Models\Attendance;
 use App\Models\CookingBatch;
 use App\Models\Schedule;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
@@ -25,7 +28,7 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
-    public function login(LoginRequest $request): RedirectResponse
+    public function login(LoginRequest $request, ActivityLogger $activityLogger): RedirectResponse
     {
         $credentials = $request->only('email', 'password');
         $email = strtolower(trim($credentials['email'] ?? ''));
@@ -35,6 +38,7 @@ class AuthController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $seconds = RateLimiter::availableIn($key);
+            $this->recordFailedLogin($activityLogger, $email);
 
             return back()->withErrors([
                 'email' => 'Too many login attempts. Please try again in '.ceil($seconds / 60).' minute(s).',
@@ -43,6 +47,7 @@ class AuthController extends Controller
 
         if (! Auth::attempt(['email' => $email, 'password' => $password], $request->boolean('remember'))) {
             RateLimiter::hit($key, 60);
+            $this->recordFailedLogin($activityLogger, $email);
 
             return back()
                 ->withErrors([
@@ -57,7 +62,13 @@ class AuthController extends Controller
 
         $user = Auth::user();
 
-        if (! $user || ! $user->employee) {
+        if (! $user instanceof User || ! $user->employee) {
+            $this->recordFailedLogin(
+                $activityLogger,
+                $email,
+                $user instanceof User ? $user : null,
+                'Login rejected because the account is not linked to an employee.',
+            );
             Auth::logout();
 
             return back()->withErrors([
@@ -66,6 +77,12 @@ class AuthController extends Controller
         }
 
         if ($user->employee->status !== 'Active') {
+            $this->recordFailedLogin(
+                $activityLogger,
+                $email,
+                $user,
+                'Login rejected because the employee account is inactive.',
+            );
             Auth::logout();
 
             return back()->withErrors([
@@ -74,6 +91,12 @@ class AuthController extends Controller
         }
 
         if (! $user->employee->role) {
+            $this->recordFailedLogin(
+                $activityLogger,
+                $email,
+                $user,
+                'Login rejected because the account has no assigned role.',
+            );
             Auth::logout();
 
             return back()->withErrors([
@@ -83,16 +106,28 @@ class AuthController extends Controller
 
         if (in_array($user->employee->role->role_name, ['Cashier', 'Kitchen Staff'], true)) {
             $now = now();
-            $todayShifts = Schedule::query()
+            $shiftCandidates = Schedule::query()
                 ->where('employee_id', $user->employee_id)
-                ->whereDate('schedule_date', $now->toDateString())
+                ->whereDate('schedule_date', '>=', $now->copy()->subDay()->toDateString())
+                ->whereDate('schedule_date', '<=', $now->toDateString())
                 ->where('status', 'Active')
+                ->whereNotNull('start_time')
+                ->whereNotNull('end_time')
+                ->orderBy('schedule_date')
                 ->orderBy('start_time')
                 ->get();
-            $availableShift = $todayShifts
-                ->first(fn (Schedule $schedule): bool => $schedule->end_time > $now->format('H:i:s'));
+            $todayShifts = $shiftCandidates
+                ->filter(fn (Schedule $schedule): bool => $schedule->schedule_date->toDateString() === $now->toDateString());
+            $availableShift = $shiftCandidates
+                ->first(fn (Schedule $schedule): bool => $schedule->endsAt()?->greaterThan($now) ?? false);
 
             if (! $availableShift) {
+                $this->recordFailedLogin(
+                    $activityLogger,
+                    $email,
+                    $user,
+                    'Login rejected because no active shift is available.',
+                );
                 Auth::logout();
 
                 $message = $todayShifts->isEmpty()
@@ -104,14 +139,17 @@ class AuthController extends Controller
                     ->onlyInput('email');
             }
 
-            $scheduleStart = Carbon::parse($now->toDateString().' '.$availableShift->start_time);
-            $lateMinutes = $now->greaterThan($scheduleStart)
+            $scheduleStart = $availableShift->startsAt();
+            $lateMinutes = $scheduleStart && $now->greaterThan($scheduleStart)
                 ? (int) $scheduleStart->diffInMinutes($now)
                 : 0;
 
             $todayAttendance = Attendance::query()
                 ->where('employee_id', $user->employee_id)
-                ->whereDate('date', $now->toDateString())
+                ->where(function ($query) use ($now, $availableShift): void {
+                    $query->whereDate('date', $now->toDateString())
+                        ->orWhere('schedule_id', $availableShift->schedule_id);
+                })
                 ->first();
 
             if (! $todayAttendance) {
@@ -129,46 +167,63 @@ class AuthController extends Controller
             }
         }
 
+        $activityLogger->record(
+            action: 'auth.login',
+            module: 'authentication',
+            description: 'User logged in successfully.',
+            subject: $user,
+        );
+
         return redirect()->intended('/');
     }
 
-    public function logout(Request $request): RedirectResponse
+    public function logout(Request $request, ActivityLogger $activityLogger): RedirectResponse
     {
         $user = Auth::user();
 
-        if ($user instanceof User && in_array($user->employee?->role?->role_name, ['Cashier', 'Kitchen Staff'], true)) {
-            $now = now();
-            $attendance = Attendance::query()
-                ->with('schedule')
-                ->where('employee_id', $user->employee_id)
-                ->whereDate('date', $now->toDateString())
-                ->whereNotNull('time_in')
-                ->whereNull('time_out')
-                ->first();
-
-            if ($attendance) {
-                $scheduleEnd = $attendance->schedule
-                    ? Carbon::parse($attendance->date->format('Y-m-d').' '.$attendance->schedule->end_time)
-                    : null;
-
-                $undertimeMinutes = $scheduleEnd && $now->lessThan($scheduleEnd)
-                    ? (int) $now->diffInMinutes($scheduleEnd)
-                    : 0;
-
-                $attendance->update([
-                    'time_out' => $now->format('H:i:s'),
-                    'undertime_minutes' => $undertimeMinutes,
-                ]);
-
-                // Reset the kitchen queue when the shift ends: remove any
-                // unfinished cooking batch started by this employee so it does
-                // not linger in the kitchen queue after their shift is done.
-                CookingBatch::query()
+        DB::transaction(function () use ($user, $activityLogger): void {
+            if ($user instanceof User && in_array($user->employee?->role?->role_name, ['Cashier', 'Kitchen Staff'], true)) {
+                $now = now();
+                $attendance = Attendance::query()
+                    ->with('schedule')
                     ->where('employee_id', $user->employee_id)
-                    ->where('status', 'cooking')
-                    ->delete();
+                    ->where(function (Builder $query) use ($now): void {
+                        $query->whereDate('date', $now->toDateString())
+                            ->orWhereDate('date', $now->copy()->subDay()->toDateString());
+                    })
+                    ->whereNotNull('time_in')
+                    ->whereNull('time_out')
+                    ->orderByDesc('date')
+                    ->first();
+
+                if ($attendance) {
+                    $scheduleEnd = $attendance->schedule
+                            ? $attendance->schedule->endsAt()
+                        : null;
+
+                    $undertimeMinutes = $scheduleEnd && $now->lessThan($scheduleEnd)
+                        ? (int) $now->diffInMinutes($scheduleEnd)
+                        : 0;
+
+                    $attendance->update([
+                        'time_out' => $now->format('H:i:s'),
+                        'undertime_minutes' => $undertimeMinutes,
+                    ]);
+
+                    CookingBatch::query()
+                        ->where('employee_id', $user->employee_id)
+                        ->where('status', 'cooking')
+                        ->delete();
+                }
             }
-        }
+
+            $activityLogger->record(
+                action: 'auth.logout',
+                module: 'authentication',
+                description: 'User logged out.',
+                actor: $user instanceof User ? $user : null,
+            );
+        });
 
         Auth::logout();
 
@@ -177,5 +232,23 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    private function recordFailedLogin(
+        ActivityLogger $activityLogger,
+        string $email,
+        ?User $user = null,
+        string $description = 'Login attempt failed.',
+    ): void {
+        $user ??= User::query()->where('email', $email)->first();
+
+        $activityLogger->record(
+            action: 'auth.login_failed',
+            module: 'authentication',
+            description: $description,
+            status: ActivityLog::STATUS_FAILURE,
+            actor: $user,
+            actorName: $user?->name ?? 'Unknown account',
+        );
     }
 }

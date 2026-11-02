@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Payment;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -167,7 +168,7 @@ class PaymentController extends Controller
     /**
      * Store a newly created payment.
      */
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $validated = $request->validate([
             'order_id' => [
@@ -273,6 +274,7 @@ class PaymentController extends Controller
                 $amountPaid,
                 $changeAmount,
                 $request,
+                $activityLogger,
                 &$proofPath,
             ) {
                 if ($validated['payment_method'] === 'GCash') {
@@ -283,7 +285,7 @@ class PaymentController extends Controller
                     }
                 }
 
-                Payment::create([
+                $payment = Payment::create([
                     'order_id' => $order->order_id,
                     'payment_method' => $validated['payment_method'],
                     'amount_paid' => $amountPaid,
@@ -292,9 +294,29 @@ class PaymentController extends Controller
                     'gcash_proof_path' => $proofPath,
                 ]);
 
+                $activityLogger->record(
+                    action: 'payment.recorded',
+                    module: 'transactions',
+                    description: 'Payment recorded for order #'.$order->order_id.'.',
+                    subject: $payment,
+                    newValues: [
+                        'order_id' => $order->order_id,
+                        'payment_method' => $payment->payment_method,
+                    ],
+                );
+
                 $order->update([
                     'status' => 'Paid',
                 ]);
+
+                $activityLogger->record(
+                    action: 'order.paid',
+                    module: 'orders',
+                    description: 'Order payment completed.',
+                    subject: $order,
+                    oldValues: ['status' => 'Ready'],
+                    newValues: ['status' => 'Paid'],
+                );
             });
         } catch (Throwable $exception) {
             if ($proofPath) {

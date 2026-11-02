@@ -43,6 +43,7 @@
 
     // Admin is treated like Manager for navigation
     $isManagerLike = in_array($authRole, ['Admin', 'Manager']);
+    $canViewActivityLogs = $isManagerLike && $authEmployee?->status === 'Active';
 
     // Detect an open attendance record (clocked in, not clocked out) so the
     // logout confirmation can warn that logging out will time out attendance.
@@ -50,9 +51,11 @@
     if ($authEmployee) {
         $openAttendance = \App\Models\Attendance::query()
             ->where('employee_id', $authEmployee->employee_id)
-            ->whereDate('date', now()->toDateString())
+            ->whereDate('date', '>=', now()->copy()->subDay()->toDateString())
+            ->whereDate('date', '<=', now()->toDateString())
             ->whereNotNull('time_in')
             ->whereNull('time_out')
+            ->orderByDesc('date')
             ->first();
     }
 
@@ -81,10 +84,14 @@
     $team = [];
     if ($isManagerLike) {
         $team[] = ['route' => 'employees.index','label' => 'Employees',    'icon' => 'users'];
+        $team[] = ['route' => 'shift-templates.index','label' => 'Shift Templates', 'icon' => 'clock'];
         if ($authRole === 'Admin') {
             $team[] = ['route' => 'users.index', 'label' => 'User Accounts', 'icon' => 'users'];
         }
-        $team[] = ['route' => 'schedules.index','label' => 'Schedules',    'icon' => 'calendar'];
+        $team[] = ['route' => 'schedules.index','label' => 'Schedule', 'icon' => 'clock'];
+        if ($canViewActivityLogs) {
+            $team[] = ['route' => 'activity-logs.index', 'label' => 'Activity Logs', 'icon' => 'book'];
+        }
     }
     if ($isManagerLike || in_array($authRole, ['Cashier', 'Kitchen Staff'])) {
         $team[] = ['route' => 'attendances.index','label' => 'Attendance','icon' => 'clock'];
@@ -95,8 +102,10 @@
     if ($isManagerLike) {
         $inv[] = ['route' => 'products.index',            'label' => 'Products',        'icon' => 'box'];
         $inv[] = ['route' => 'inventories.index',         'label' => 'Inventory',       'icon' => 'archive'];
+        $inv[] = ['route' => 'inventory-categories.index','label' => 'Categories',      'icon' => 'box'];
         $inv[] = ['route' => 'stock-movements.index',     'label' => 'Stock Movements', 'icon' => 'arrows'];
         $inv[] = ['route' => 'stock-notifications.index', 'label' => 'Stock Alerts',    'icon' => 'bell'];
+        $inv[] = ['route' => 'reports.inventory',          'label' => 'Inventory Reports','icon' => 'receipt'];
     }
     if ($inv) $navGroups[] = ['label' => 'Inventory', 'items' => $inv];
 
@@ -140,7 +149,10 @@
                     @endif
                     <ul class="space-y-1">
                         @foreach ($group['items'] as $item)
-                            @php $isActive = request()->routeIs($item['route']); @endphp
+                            @php
+                                $isActive = request()->routeIs($item['route'])
+                                    || ($item['route'] === 'activity-logs.index' && request()->routeIs('activity-logs.*'));
+                            @endphp
                             <li>
                                 <a href="{{ route($item['route']) }}"
                                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition
@@ -205,6 +217,10 @@
                     <p class="hidden sm:block text-xs text-slate-500 truncate">@yield('page-subtitle')</p>
                 @endif
             </div>
+
+            @if (!request()->routeIs('dashboard'))
+                @include('partials.datetime')
+            @endif
 
             @if ($isManagerLike || $authRole === 'Cashier')
                 <div class="relative">
@@ -696,6 +712,29 @@
         });
         attendanceProofModal.querySelector('input[type="file"]')?.focus();
     }
+
+    const dateEl = document.getElementById('datetime-date');
+    const timeEl = document.getElementById('datetime-time');
+    if (dateEl && timeEl) {
+        const dateFormatter = new Intl.DateTimeFormat(undefined, {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+        });
+        const timeFormatter = new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+        });
+        const updateClock = () => {
+            const now = new Date();
+            dateEl.textContent = dateFormatter.format(now);
+            timeEl.textContent = timeFormatter.format(now);
+        };
+        updateClock();
+        window.setInterval(updateClock, 1000);
+    }
 })();
 </script>
 
@@ -763,7 +802,7 @@
         background-repeat: no-repeat;
         background-position: center center;
         background-size: 900 px;
-        opacity: 0.18;
+        opacity: 0.05;
         pointer-events: none;
         z-index: 0;
     }

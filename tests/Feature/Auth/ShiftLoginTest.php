@@ -115,6 +115,52 @@ class ShiftLoginTest extends TestCase
         ]);
     }
 
+    public function test_staff_can_log_in_during_an_overnight_shift_from_the_previous_day(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-14 02:00:00'));
+        $user = $this->createEmployeeUser('Cashier');
+        $schedule = $this->createSchedule($user, '2026-10-13', '22:00:00', '06:00:00');
+
+        $response = $this->from('/login')->post('/login', [
+            'email' => $user->email,
+            'password' => 'password123',
+        ]);
+
+        $response->assertRedirect('/');
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('attendances', [
+            'employee_id' => $user->employee_id,
+            'schedule_id' => $schedule->schedule_id,
+            'date' => '2026-10-14 00:00:00',
+            'time_in' => '02:00:00',
+            'late_minutes' => 240,
+        ]);
+    }
+
+    public function test_staff_logout_during_an_overnight_shift_closes_the_previous_day_attendance(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-13 23:00:00'));
+        $user = $this->createEmployeeUser('Cashier');
+        $schedule = $this->createSchedule($user, '2026-10-13', '22:00:00', '06:00:00');
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password123',
+        ])->assertRedirect('/');
+        $attendance = Attendance::query()
+            ->where('schedule_id', $schedule->schedule_id)
+            ->firstOrFail();
+
+        $this->travelTo(Carbon::parse('2026-10-14 02:00:00'));
+        $response = $this->post('/logout');
+
+        $response->assertRedirect('/login');
+        $this->assertDatabaseHas('attendances', [
+            'attendance_id' => $attendance->attendance_id,
+            'time_out' => '02:00:00',
+            'undertime_minutes' => 240,
+        ]);
+    }
+
     public function test_manager_can_log_in_without_a_shift_and_sees_logout_confirmation(): void
     {
         $manager = $this->createEmployeeUser('Manager');

@@ -35,8 +35,8 @@
 
             <div>
                 <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Quantity</div>
-                <div class="text-2xl font-bold text-slate-800">
-                    {{ number_format($stockMovement->quantity, 2) }}
+                <div class="text-2xl font-bold {{ (float) $stockMovement->quantity < 0 ? 'text-red-600' : 'text-emerald-700' }}">
+                    {{ (float) $stockMovement->quantity > 0 ? '+' : '' }}{{ number_format($stockMovement->quantity, 2) }}
                     {{ $stockMovement->ingredient->unit ?? '' }}
                 </div>
             </div>
@@ -44,25 +44,25 @@
             <div>
                 <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Movement Date</div>
                 <div class="text-lg font-semibold text-slate-800">
-                    {{ \Carbon\Carbon::parse($stockMovement->movement_date)->format('F d, Y h:i A') }}
+                    {{ $stockMovement->movement_date?->format('F d, Y h:i A') ?? '—' }}
                 </div>
             </div>
 
             <div>
                 <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Reference</div>
                 <div class="text-lg text-slate-800">
-                    {{ $stockMovement->reference ?: '—' }}
+                    {{ $stockMovement->reference ?: ($stockMovement->remarks ?: '—') }}
                 </div>
+            </div>
+            <div>
+                <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Recorded by</div>
+                <div class="text-lg text-slate-800">{{ $stockMovement->user->name ?? 'System' }}</div>
             </div>
         </div>
 
         <div class="flex gap-3 mt-8">
-            <a href="{{ route('stock-movements.edit', $stockMovement) }}"
-               class="px-5 py-3 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-semibold shadow-lg shadow-red-500/20 transition">
-                Edit
-            </a>
             <a href="{{ route('stock-movements.index') }}"
-               class="px-5 py-3 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 transition">
+               class="px-5 py-3 rounded-xl bg-[#E31E24] hover:bg-red-700 text-white font-semibold transition">
                 Back to List
             </a>
         </div>

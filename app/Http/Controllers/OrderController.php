@@ -8,8 +8,10 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\StockMovement;
 use App\Models\User;
 use App\Notifications\CookingBatchNotification;
+use App\Services\ActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +81,7 @@ class OrderController extends Controller
         return view('orders.create', compact('chickenBatches', 'products'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $validated = $request->validate([
             'order_type' => [
@@ -153,6 +155,7 @@ class OrderController extends Controller
                 $amountPaid,
                 $paymentMethod,
                 $request,
+                $activityLogger,
                 &$proofPath,
             ) {
                 $order = Order::create([
@@ -209,7 +212,7 @@ class OrderController extends Controller
                     'total_amount' => $totalAmount,
                 ]);
 
-                $inventoryError = $this->deductOrderIngredients($order);
+                $inventoryError = $this->deductOrderIngredients($order, $activityLogger);
 
                 if ($inventoryError !== null) {
                     throw ValidationException::withMessages([
@@ -238,7 +241,7 @@ class OrderController extends Controller
                     }
                 }
 
-                Payment::create([
+                $payment = Payment::create([
                     'order_id' => $order->order_id,
                     'payment_method' => $paymentMethod,
                     'amount_paid' => $amountPaid,
@@ -246,6 +249,42 @@ class OrderController extends Controller
                     'payment_date' => now(),
                     'gcash_proof_path' => $proofPath,
                 ]);
+
+                $activityLogger->record(
+                    action: 'payment.recorded',
+                    module: 'transactions',
+                    description: 'Payment recorded for order #'.$order->order_id.'.',
+                    subject: $payment,
+                    newValues: [
+                        'order_id' => $order->order_id,
+                        'payment_method' => $payment->payment_method,
+                    ],
+                );
+
+                $activityLogger->record(
+                    action: 'order.created',
+                    module: 'orders',
+                    description: 'Order created.',
+                    subject: $order,
+                    newValues: [
+                        'order_type' => $order->order_type,
+                        'is_fresh_chicken' => (bool) $order->is_fresh_chicken,
+                        'total_amount' => (string) $order->total_amount,
+                        'status' => $order->status,
+                        'item_count' => count($validated['items']),
+                    ],
+                );
+
+                if ($order->status === 'Completed') {
+                    $activityLogger->record(
+                        action: 'order.completed',
+                        module: 'orders',
+                        description: 'Order completed during checkout.',
+                        subject: $order,
+                        oldValues: ['status' => 'Pending'],
+                        newValues: ['status' => 'Completed'],
+                    );
+                }
 
                 return $order;
             });
@@ -355,7 +394,8 @@ class OrderController extends Controller
 
     public function update(
         Request $request,
-        Order $order
+        Order $order,
+        ActivityLogger $activityLogger,
     ) {
         $this->authorizeOrder($order);
 
@@ -428,6 +468,7 @@ class OrderController extends Controller
             || $validated['is_fresh_chicken'] === 1;
 
         $previousTotal = (float) $order->total_amount;
+        $oldValues = $this->auditValues($order);
         $additionalAmountPaid = (float) ($validated['additional_amount_paid'] ?? 0);
         $additionalPaymentMethod = $validated['additional_payment_method'] ?? null;
 
@@ -487,9 +528,11 @@ class OrderController extends Controller
             $isFreshChicken,
             $previousTotal,
             $additionalAmountPaid,
-            $additionalPaymentMethod
+            $additionalPaymentMethod,
+            $oldValues,
+            $activityLogger,
         ) {
-            $reconcileError = $this->reconcileOrderIngredients($order, $selectedItems);
+            $reconcileError = $this->reconcileOrderIngredients($order, $selectedItems, $activityLogger);
 
             if ($reconcileError !== null) {
                 return $reconcileError;
@@ -547,14 +590,34 @@ class OrderController extends Controller
             ]);
 
             if ($balanceDue > 0) {
-                Payment::create([
+                $payment = Payment::create([
                     'order_id' => $order->order_id,
                     'payment_method' => $additionalPaymentMethod,
                     'amount_paid' => $additionalAmountPaid,
                     'change_amount' => max(0, $additionalAmountPaid - $balanceDue),
                     'payment_date' => now(),
                 ]);
+
+                $activityLogger->record(
+                    action: 'payment.recorded',
+                    module: 'transactions',
+                    description: 'Additional payment recorded for order #'.$order->order_id.'.',
+                    subject: $payment,
+                    newValues: [
+                        'order_id' => $order->order_id,
+                        'payment_method' => $payment->payment_method,
+                    ],
+                );
             }
+
+            $activityLogger->record(
+                action: 'order.updated',
+                module: 'orders',
+                description: 'Order information updated.',
+                subject: $order,
+                oldValues: $oldValues,
+                newValues: $this->auditValues($order),
+            );
 
             return null;
         });
@@ -578,7 +641,7 @@ class OrderController extends Controller
             );
     }
 
-    public function destroy(Order $order)
+    public function destroy(Order $order, ActivityLogger $activityLogger)
     {
         $this->authorizeOrder($order);
 
@@ -596,7 +659,19 @@ class OrderController extends Controller
                 ]);
         }
 
-        $order->delete();
+        DB::transaction(function () use ($order, $activityLogger): void {
+            $oldValues = $this->auditValues($order);
+            $order->delete();
+
+            $activityLogger->record(
+                action: 'order.cancelled',
+                module: 'orders',
+                description: 'Pending order cancelled.',
+                subject: $order,
+                oldValues: $oldValues,
+                newValues: ['status' => 'Cancelled'],
+            );
+        });
 
         return redirect()
             ->route('orders.index')
@@ -606,7 +681,7 @@ class OrderController extends Controller
             );
     }
 
-    public function confirm(Order $order)
+    public function confirm(Order $order, ActivityLogger $activityLogger)
     {
         $this->authorizeOrder($order);
 
@@ -624,14 +699,23 @@ class OrderController extends Controller
                 ]);
         }
 
-        $confirmationError = DB::transaction(function () use ($order): ?string {
-            $confirmationError = $this->deductOrderIngredients($order);
+        $confirmationError = DB::transaction(function () use ($order, $activityLogger): ?string {
+            $confirmationError = $this->deductOrderIngredients($order, $activityLogger);
 
             if ($confirmationError === null) {
                 $order->update([
                     'status' => 'Confirmed',
                     'ready_at' => null,
                 ]);
+
+                $activityLogger->record(
+                    action: 'order.confirmed',
+                    module: 'orders',
+                    description: 'Order confirmed.',
+                    subject: $order,
+                    oldValues: ['status' => 'Pending'],
+                    newValues: ['status' => 'Confirmed'],
+                );
             }
 
             return $confirmationError;
@@ -655,7 +739,7 @@ class OrderController extends Controller
             );
     }
 
-    public function preparing(Order $order)
+    public function preparing(Order $order, ActivityLogger $activityLogger)
     {
         /*
          * Kitchen Staff must be able
@@ -670,9 +754,20 @@ class OrderController extends Controller
                 ]);
         }
 
-        $order->update([
-            'status' => 'Preparing',
-        ]);
+        DB::transaction(function () use ($order, $activityLogger): void {
+            $order->update([
+                'status' => 'Preparing',
+            ]);
+
+            $activityLogger->record(
+                action: 'order.preparing',
+                module: 'orders',
+                description: 'Order marked as preparing.',
+                subject: $order,
+                oldValues: ['status' => 'Confirmed'],
+                newValues: ['status' => 'Preparing'],
+            );
+        });
 
         return back()
             ->with(
@@ -681,7 +776,7 @@ class OrderController extends Controller
             );
     }
 
-    public function ready(Order $order)
+    public function ready(Order $order, ActivityLogger $activityLogger)
     {
         /*
          * Kitchen Staff must be able
@@ -696,11 +791,21 @@ class OrderController extends Controller
                 ]);
         }
 
-        $order->update([
-            'status' => 'Ready',
+        DB::transaction(function () use ($order, $activityLogger): void {
+            $order->update([
+                'status' => 'Ready',
+                'ready_at' => now(),
+            ]);
 
-            'ready_at' => now(),
-        ]);
+            $activityLogger->record(
+                action: 'order.ready',
+                module: 'orders',
+                description: 'Order marked as ready.',
+                subject: $order,
+                oldValues: ['status' => 'Preparing'],
+                newValues: ['status' => 'Ready'],
+            );
+        });
 
         return back()
             ->with(
@@ -738,11 +843,13 @@ class OrderController extends Controller
             ->with('success', ucfirst($validated['food_type']).' batch timer started.');
     }
 
-    public function markCookingBatchReady(CookingBatch $batch): RedirectResponse
-    {
+    public function markCookingBatchReady(
+        CookingBatch $batch,
+        ActivityLogger $activityLogger,
+    ): RedirectResponse {
         $this->authorizeKitchenAction();
 
-        DB::transaction(function () use ($batch): void {
+        DB::transaction(function () use ($batch, $activityLogger): void {
             $batch = CookingBatch::query()
                 ->lockForUpdate()
                 ->findOrFail($batch->getKey());
@@ -768,14 +875,27 @@ class OrderController extends Controller
             ]);
 
             if ($batch->food_type === 'chicken') {
-                Order::query()
+                $waitingOrders = Order::query()
                     ->where('is_fresh_chicken', true)
                     ->where('status', 'Pending')
                     ->whereHas('payments')
-                    ->update([
+                    ->get();
+
+                foreach ($waitingOrders as $waitingOrder) {
+                    $waitingOrder->update([
                         'status' => 'Ready',
                         'ready_at' => now(),
                     ]);
+
+                    $activityLogger->record(
+                        action: 'order.ready',
+                        module: 'orders',
+                        description: 'Fresh chicken order marked as ready.',
+                        subject: $waitingOrder,
+                        oldValues: ['status' => 'Pending'],
+                        newValues: ['status' => 'Ready'],
+                    );
+                }
 
                 $this->notifyCashiersAboutFreshChickenBatch($batch, 'ready');
             }
@@ -786,7 +906,7 @@ class OrderController extends Controller
             ->with('success', 'Chicken batch confirmed ready.');
     }
 
-    public function complete(Order $order)
+    public function complete(Order $order, ActivityLogger $activityLogger)
     {
         $this->authorizeOrder($order);
 
@@ -797,9 +917,21 @@ class OrderController extends Controller
                 ]);
         }
 
-        $order->update([
-            'status' => 'Completed',
-        ]);
+        DB::transaction(function () use ($order, $activityLogger): void {
+            $oldStatus = $order->status;
+            $order->update([
+                'status' => 'Completed',
+            ]);
+
+            $activityLogger->record(
+                action: 'order.completed',
+                module: 'orders',
+                description: 'Order completed.',
+                subject: $order,
+                oldValues: ['status' => $oldStatus],
+                newValues: ['status' => 'Completed'],
+            );
+        });
 
         return redirect()
             ->route('orders.index', ['status_order' => $order->order_id])
@@ -809,7 +941,7 @@ class OrderController extends Controller
             );
     }
 
-    private function deductOrderIngredients(Order $order): ?string
+    private function deductOrderIngredients(Order $order, ActivityLogger $activityLogger): ?string
     {
         $order->load([
             'orderItems.product.productIngredients.ingredient',
@@ -821,7 +953,7 @@ class OrderController extends Controller
             return $requiredIngredients;
         }
 
-        return $this->applyIngredientChanges($requiredIngredients);
+        return $this->applyIngredientChanges($requiredIngredients, $order, $activityLogger);
     }
 
     /**
@@ -831,8 +963,11 @@ class OrderController extends Controller
      * newly added ingredients, so editing an order can never let inventory
      * drift away from the recipes that were actually consumed.
      */
-    private function reconcileOrderIngredients(Order $order, array $newItems): ?string
-    {
+    private function reconcileOrderIngredients(
+        Order $order,
+        array $newItems,
+        ActivityLogger $activityLogger,
+    ): ?string {
         $previousRequirements = $this->collectRequiredIngredients($order);
 
         if ($previousRequirements instanceof string) {
@@ -862,7 +997,7 @@ class OrderController extends Controller
             $ingredientChanges[$ingredientId]['quantity'] += $requirement['quantity'];
         }
 
-        return $this->applyIngredientChanges($ingredientChanges);
+        return $this->applyIngredientChanges($ingredientChanges, $order, $activityLogger);
     }
 
     /**
@@ -933,8 +1068,11 @@ class OrderController extends Controller
      *
      * @param  array<int, array{ingredient_name: string, quantity: float}>  $changes
      */
-    private function applyIngredientChanges(array $changes): ?string
-    {
+    private function applyIngredientChanges(
+        array $changes,
+        Order $order,
+        ActivityLogger $activityLogger,
+    ): ?string {
         $inventories = [];
 
         foreach ($changes as $ingredientId => $change) {
@@ -961,13 +1099,51 @@ class OrderController extends Controller
                 continue;
             }
 
+            $quantityDelta = -$change['quantity'];
             $inventories[$ingredientId]->update([
-                'quantity' => (float) $inventories[$ingredientId]->quantity - $change['quantity'],
+                'quantity' => (float) $inventories[$ingredientId]->quantity + $quantityDelta,
                 'last_updated' => now(),
             ]);
+
+            $stockMovement = StockMovement::create([
+                'ingredient_id' => $ingredientId,
+                'user_id' => auth()->id(),
+                'movement_type' => $quantityDelta > 0 ? 'Stock In' : 'Stock Out',
+                'quantity' => $quantityDelta,
+                'movement_date' => now(),
+                'reference' => 'Order #'.$order->order_id,
+                'remarks' => 'Inventory updated by POS checkout.',
+            ]);
+
+            $activityLogger->record(
+                action: 'stock.movement_recorded',
+                module: 'inventory',
+                description: 'Stock movement recorded for order #'.$order->order_id.'.',
+                subject: $stockMovement,
+                newValues: [
+                    'ingredient_id' => $stockMovement->ingredient_id,
+                    'movement_type' => $stockMovement->movement_type,
+                    'quantity' => (string) $stockMovement->quantity,
+                    'order_id' => $order->order_id,
+                ],
+            );
         }
 
         return null;
+    }
+
+    /**
+     * @return array{ status: string, order_type: string, is_fresh_chicken: bool, total_amount: string, item_count: int }
+     */
+    private function auditValues(Order $order): array
+    {
+        return [
+            'status' => $order->status,
+            'order_type' => $order->order_type,
+            'is_fresh_chicken' => (bool) $order->is_fresh_chicken,
+            'total_amount' => (string) $order->total_amount,
+            'item_count' => $order->orderItems()->count(),
+        ];
     }
 
     /*

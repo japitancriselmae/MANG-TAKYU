@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Employee;
 use App\Models\Role;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class EmployeeController extends Controller
 {
@@ -42,7 +44,7 @@ class EmployeeController extends Controller
         return view('employees.create', compact('roles'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -53,7 +55,17 @@ class EmployeeController extends Controller
             'status' => ['required', 'in:Active,Inactive'],
         ]);
 
-        Employee::create($validated);
+        DB::transaction(function () use ($validated, $activityLogger): void {
+            $employee = Employee::create($validated);
+
+            $activityLogger->record(
+                action: 'employee.created',
+                module: 'employees',
+                description: 'Employee created.',
+                subject: $employee,
+                newValues: $this->auditValues($employee),
+            );
+        });
 
         return redirect()
             ->route('employees.index')
@@ -87,7 +99,7 @@ class EmployeeController extends Controller
         return view('employees.edit', compact('employee', 'roles'));
     }
 
-    public function update(Request $request, Employee $employee)
+    public function update(Request $request, Employee $employee, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -104,14 +116,34 @@ class EmployeeController extends Controller
             'status' => ['required', 'in:Active,Inactive'],
         ]);
 
-        $employee->update($validated);
+        DB::transaction(function () use ($validated, $employee, $activityLogger): void {
+            $employee = Employee::query()
+                ->whereKey($employee->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $oldValues = $this->auditValues($employee);
+            $employee->update($validated);
+            $employee->load('role');
+            $newValues = $this->auditValues($employee);
+
+            $activityLogger->record(
+                action: $oldValues['status'] === 'Active' && $newValues['status'] === 'Inactive'
+                    ? 'employee.deactivated'
+                    : 'employee.updated',
+                module: 'employees',
+                description: 'Employee information updated.',
+                subject: $employee,
+                oldValues: $oldValues,
+                newValues: $newValues,
+            );
+        });
 
         return redirect()
             ->route('employees.index')
             ->with('success', 'Employee updated successfully.');
     }
 
-    public function destroy(Employee $employee)
+    public function destroy(Employee $employee, ActivityLogger $activityLogger)
     {
         $this->requireManager();
 
@@ -133,10 +165,41 @@ class EmployeeController extends Controller
             ]);
         }
 
-        $employee->delete();
+        DB::transaction(function () use ($employee, $activityLogger): void {
+            $employee = Employee::query()
+                ->whereKey($employee->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+            $oldValues = $this->auditValues($employee);
+
+            $employee->delete();
+
+            $activityLogger->record(
+                action: 'employee.deleted',
+                module: 'employees',
+                description: 'Employee deleted.',
+                subject: $employee,
+                oldValues: $oldValues,
+            );
+        });
 
         return redirect()
             ->route('employees.index')
             ->with('success', 'Employee deleted successfully.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function auditValues(Employee $employee): array
+    {
+        $employee->loadMissing('role');
+
+        return [
+            'first_name' => $employee->first_name,
+            'last_name' => $employee->last_name,
+            'role' => $employee->role?->role_name,
+            'status' => $employee->status,
+        ];
     }
 }

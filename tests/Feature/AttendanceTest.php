@@ -300,6 +300,53 @@ class AttendanceTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_overnight_clock_out_uses_the_shift_end_on_the_following_day(): void
+    {
+        Carbon::setTestNow('2026-09-19 02:00:00');
+        $role = Role::create(['role_name' => 'Manager']);
+        $employee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Night',
+            'last_name' => 'Employee',
+            'status' => 'Active',
+        ]);
+        $user = User::create([
+            'name' => 'Night Employee',
+            'email' => 'night-clockout@example.com',
+            'password' => 'password123',
+            'employee_id' => $employee->employee_id,
+        ]);
+        $schedule = Schedule::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '22:00:00',
+            'end_time' => '06:00:00',
+            'status' => 'Active',
+        ]);
+        $attendance = Attendance::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_id' => $schedule->schedule_id,
+            'date' => '2026-09-18',
+            'time_in' => '22:00:00',
+            'time_out' => null,
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        $response = $this->actingAs($user)
+            ->post("/attendances/{$attendance->attendance_id}/clock-out");
+
+        $response->assertRedirect('/attendances');
+        $this->assertDatabaseHas('attendances', [
+            'attendance_id' => $attendance->attendance_id,
+            'time_out' => '02:00:00',
+            'undertime_minutes' => 240,
+        ]);
+
+        Carbon::setTestNow();
+    }
+
     public function test_employee_cannot_access_another_employees_attendance(): void
     {
         $role = Role::create([
@@ -405,6 +452,67 @@ class AttendanceTest extends TestCase
             $absentEmployees->first()->employee_id
                 === $scheduledEmployee->employee_id
         );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_manager_detects_only_unclocked_employees_on_overnight_shifts(): void
+    {
+        Carbon::setTestNow('2026-09-19 02:00:00');
+        $role = Role::create(['role_name' => 'Manager']);
+        $managerEmployee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'System',
+            'last_name' => 'Manager',
+            'status' => 'Active',
+        ]);
+        $absentEmployee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Absent',
+            'last_name' => 'Overnight',
+            'status' => 'Active',
+        ]);
+        $presentEmployee = Employee::create([
+            'role_id' => $role->role_id,
+            'first_name' => 'Present',
+            'last_name' => 'Overnight',
+            'status' => 'Active',
+        ]);
+        $manager = User::create([
+            'name' => 'System Manager',
+            'email' => 'overnight-manager@example.com',
+            'password' => 'password123',
+            'employee_id' => $managerEmployee->employee_id,
+        ]);
+        Schedule::create([
+            'employee_id' => $absentEmployee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '22:00:00',
+            'end_time' => '06:00:00',
+            'status' => 'Active',
+        ]);
+        $presentSchedule = Schedule::create([
+            'employee_id' => $presentEmployee->employee_id,
+            'schedule_date' => '2026-09-18',
+            'start_time' => '22:00:00',
+            'end_time' => '06:00:00',
+            'status' => 'Active',
+        ]);
+        Attendance::create([
+            'employee_id' => $presentEmployee->employee_id,
+            'schedule_id' => $presentSchedule->schedule_id,
+            'date' => '2026-09-18',
+            'time_in' => '22:00:00',
+            'status' => 'Present',
+            'late_minutes' => 0,
+            'undertime_minutes' => 0,
+        ]);
+
+        $response = $this->actingAs($manager)->get('/attendances');
+
+        $absentEmployees = $response->viewData('absentEmployees');
+        $this->assertCount(1, $absentEmployees);
+        $this->assertSame($absentEmployee->employee_id, $absentEmployees->first()->employee_id);
 
         Carbon::setTestNow();
     }

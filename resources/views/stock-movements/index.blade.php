@@ -9,7 +9,7 @@
 <div class="flex items-center justify-between mb-6">
     <div>
         <h2 class="text-xl font-bold text-slate-800">Movement List</h2>
-        <p class="text-sm text-slate-500 mt-0.5">{{ $stockMovements->count() }} record(s)</p>
+        <p class="text-sm text-slate-500 mt-0.5">{{ $stockMovements->total() }} record(s)</p>
     </div>
     <a href="{{ route('stock-movements.create') }}"
        class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#E31E24] hover:bg-red-700
@@ -21,6 +21,23 @@
     </a>
 </div>
 
+<form method="GET" action="{{ route('stock-movements.index') }}" class="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5">
+    <label class="sr-only" for="movement-search">Search stock history</label>
+    <input id="movement-search" type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search ingredient or SKU" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+    <label class="sr-only" for="movement-type-filter">Movement type</label>
+    <select id="movement-type-filter" name="type" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+        <option value="">All movement types</option>
+        @foreach (['Stock In', 'Stock Out', 'Adjustment', 'Opening Balance'] as $movementType)
+            <option value="{{ $movementType }}" @selected(($filters['type'] ?? '') === $movementType)>{{ $movementType }}</option>
+        @endforeach
+    </select>
+    <label class="sr-only" for="movement-start-date">From</label>
+    <input id="movement-start-date" type="date" name="start_date" value="{{ $filters['start_date'] ?? '' }}" max="{{ now()->toDateString() }}" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+    <label class="sr-only" for="movement-end-date">To</label>
+    <input id="movement-end-date" type="date" name="end_date" value="{{ $filters['end_date'] ?? '' }}" max="{{ now()->toDateString() }}" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">Apply filters</button>
+</form>
+
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
     @if ($stockMovements->count() > 0)
         <div class="overflow-x-auto">
@@ -29,6 +46,7 @@
                     <tr class="text-xs uppercase tracking-wider text-slate-500">
                         <th class="px-6 py-3 font-semibold">ID</th>
                         <th class="px-6 py-3 font-semibold">Ingredient</th>
+                        <th class="px-6 py-3 font-semibold">Category</th>
                         <th class="px-6 py-3 font-semibold">Type</th>
                         <th class="px-6 py-3 font-semibold">Quantity</th>
                         <th class="px-6 py-3 font-semibold">Date</th>
@@ -41,8 +59,9 @@
                         @php
                             $type = strtolower(trim($movement->movement_type ?? ''));
                             $qty = (float) $movement->quantity;
-                            $isIn = in_array($type, ['in', 'stock in', 'addition', 'add']);
-                            $isOut = in_array($type, ['out', 'stock out', 'deduction', 'deduct']);
+                            $isIn = in_array($type, ['in', 'stock in', 'opening balance', 'addition', 'add'], true);
+                            $isOut = in_array($type, ['out', 'stock out', 'deduction', 'deduct'], true) || $qty < 0;
+                            $displayQty = $isOut ? -abs($qty) : abs($qty);
                         @endphp
                         <tr class="hover:bg-slate-50 transition">
                             <td class="px-6 py-4 font-mono text-xs text-slate-500">
@@ -50,6 +69,9 @@
                             </td>
                             <td class="px-6 py-4 font-semibold text-slate-800">
                                 {{ $movement->ingredient->ingredient_name ?? 'Unknown Ingredient' }}
+                            </td>
+                            <td class="px-6 py-4 text-slate-600">
+                                {{ $movement->ingredient->inventoryCategory->name ?? 'Uncategorized' }}
                             </td>
                             <td class="px-6 py-4">
                                 @if ($isIn)
@@ -67,10 +89,10 @@
                                 @endif
                             </td>
                             <td class="px-6 py-4">
-                                @if ($qty > 0)
-                                    <span class="font-bold text-emerald-600">+{{ number_format($qty, 2) }}</span>
-                                @elseif ($qty < 0)
-                                    <span class="font-bold text-[#E31E24]">{{ number_format($qty, 2) }}</span>
+                                @if ($displayQty > 0)
+                                    <span class="font-bold text-emerald-600">+{{ number_format($displayQty, 2) }}</span>
+                                @elseif ($displayQty < 0)
+                                    <span class="font-bold text-[#E31E24]">{{ number_format($displayQty, 2) }}</span>
                                 @else
                                     <span class="text-slate-500">{{ number_format($qty, 2) }}</span>
                                 @endif
@@ -80,7 +102,7 @@
                                 {{ $movement->movement_date ? $movement->movement_date->format('M d, Y h:i A') : '—' }}
                             </td>
                             <td class="px-6 py-4 text-slate-600 text-xs">
-                                {{ $movement->reference ?? '—' }}
+                                {{ $movement->reference ?? $movement->remarks ?? '—' }}
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex justify-end gap-2">
@@ -88,18 +110,6 @@
                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
                                         View
                                     </a>
-                                    <a href="{{ route('stock-movements.edit', $movement) }}"
-                                       class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 transition">
-                                        Edit
-                                    </a>
-                                    <form action="{{ route('stock-movements.destroy', $movement) }}" method="POST"
-                                          onsubmit="return confirm('Delete this record?');">
-                                        @csrf @method('DELETE')
-                                        <button type="submit"
-                                                class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition">
-                                            Delete
-                                        </button>
-                                    </form>
                                 </div>
                             </td>
                         </tr>
@@ -117,6 +127,9 @@
                 Record First Movement
             </a>
         </div>
+    @endif
+    @if ($stockMovements->hasPages())
+        <div class="border-t border-slate-100 px-6 py-4">{{ $stockMovements->links() }}</div>
     @endif
 </div>
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Employee;
 use App\Models\Ingredient;
 use App\Models\Inventory;
+use App\Models\InventoryCategory;
 use App\Models\Product;
 use App\Models\ProductIngredient;
 use App\Models\Role;
@@ -67,6 +68,49 @@ class InventoryWorkspaceTest extends TestCase
             ->assertSee('Crispy Chicken')
             ->assertSee('Chicken')
             ->assertSee('Add Recipe Ingredient');
+    }
+
+    public function test_inventory_filters_by_sku_category_and_stock_level(): void
+    {
+        $manager = $this->createManager();
+        $category = InventoryCategory::create(['name' => 'Canned goods']);
+        $peas = Ingredient::create([
+            'inventory_category_id' => $category->id,
+            'ingredient_name' => 'Green peas',
+            'sku' => 'PEA-101',
+            'unit' => 'can',
+            'minimum_stock' => 3,
+            'status' => 'Active',
+        ]);
+        $rice = Ingredient::create([
+            'ingredient_name' => 'Rice',
+            'sku' => 'RICE-001',
+            'unit' => 'kg',
+            'minimum_stock' => 5,
+            'status' => 'Active',
+        ]);
+        Inventory::create([
+            'ingredient_id' => $peas->ingredient_id,
+            'quantity' => 2,
+            'minimum_stock' => 3,
+            'last_updated' => now(),
+        ]);
+        Inventory::create([
+            'ingredient_id' => $rice->ingredient_id,
+            'quantity' => 15,
+            'minimum_stock' => 5,
+            'last_updated' => now(),
+        ]);
+
+        $this->actingAs($manager)
+            ->get(route('inventories.index', [
+                'search' => 'PEA',
+                'category' => $category->id,
+                'stock_level' => 'low-stock',
+            ]))
+            ->assertSee('Green peas')
+            ->assertSee('PEA-101')
+            ->assertDontSee('Rice');
     }
 
     public function test_ingredient_index_redirects_to_stock_items_inventory(): void

@@ -181,7 +181,7 @@
     {{-- ============ MAIN ============ --}}
     <div class="flex-1 flex flex-col lg:ml-64 min-w-0">
 
-        <header class="sticky top-0 z-20 h-16 bg-white/90 backdrop-blur border-b border-slate-200 flex items-center gap-3 px-4 sm:px-6">
+        <header class="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/90 px-3 backdrop-blur sm:gap-3 sm:px-6">
             <button id="sidebarToggle" type="button"
                     class="lg:hidden p-2 rounded-lg hover:bg-slate-100 text-slate-600">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -199,7 +199,9 @@
             </div>
 
             @if (!request()->routeIs('dashboard'))
-                @include('partials.datetime')
+                <div class="hidden md:block">
+                    @include('partials.datetime')
+                </div>
             @endif
 
             @if ($isManagerLike || $authRole === 'Cashier')
@@ -225,8 +227,8 @@
                             </button>
 
                             <div id="notificationDropdown"
-                                 class="hidden absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl
-                                        border border-slate-200 overflow-hidden">
+                                 class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden
+                                        rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
                                 <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                                     <h3 class="font-semibold text-slate-800 text-sm">Kitchen Updates</h3>
                                     <span id="kitchenBatchNotificationCount"
@@ -286,8 +288,8 @@
                     </button>
 
                     <div id="notificationDropdown"
-                         class="hidden absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl
-                                border border-slate-200 overflow-hidden">
+                         class="hidden absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden
+                                rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
                         <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                             <h3 class="font-semibold text-slate-800 text-sm">Stock Notifications</h3>
                             <span class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-brand-red font-bold">

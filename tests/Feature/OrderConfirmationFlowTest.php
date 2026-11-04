@@ -20,7 +20,7 @@ class OrderConfirmationFlowTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_pos_page_shows_the_preparation_preference_and_no_search_box(): void
+    public function test_pos_page_hides_the_chicken_preference_and_no_search_box(): void
     {
         $cashier = $this->createEmployeeUser('Cashier');
         $this->createProductWithInventory();
@@ -28,21 +28,21 @@ class OrderConfirmationFlowTest extends TestCase
         $response = $this->actingAs($cashier)->get(route('orders.create'));
 
         $response->assertOk();
-        $response->assertSee('Chicken preparation preference');
-        $response->assertSee('Available Cooked Chicken');
-        $response->assertSee('Freshly Cooked Chicken');
+        $response->assertDontSee('Chicken preparation preference');
+        $response->assertDontSee('Available Cooked Chicken');
+        $response->assertDontSee('Freshly Cooked Chicken');
+        $response->assertDontSee('name="is_fresh_chicken"', false);
         $response->assertDontSee('Search products');
         $response->assertDontSee('productSearch');
     }
 
-    public function test_available_cooked_chicken_completes_the_order_and_deducts_stock(): void
+    public function test_order_defaults_to_available_cooked_chicken_and_deducts_stock(): void
     {
         $cashier = $this->createEmployeeUser('Cashier');
         $product = $this->createProductWithInventory();
 
         $response = $this->actingAs($cashier)->post(route('orders.store'), [
             'order_type' => 'Dine-in',
-            'is_fresh_chicken' => '0',
             'items' => [['product_id' => $product->product_id, 'quantity' => 2]],
             'payment_method' => 'Cash',
             'amount_paid' => 120,

@@ -24,7 +24,7 @@
     </style>
 </head>
 
-<body class="min-h-screen bg-[#0B0B0B] relative overflow-hidden">
+<body class="min-h-screen bg-[#0B0B0B] relative overflow-x-hidden overflow-y-auto">
 
     {{-- Red glow --}}
     <div class="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-[#E31E24]/30 blur-3xl"></div>
@@ -68,7 +68,7 @@
                         <label for="email" class="block text-xs uppercase tracking-wider text-white/60 mb-2">Email</label>
                         <input id="email" name="email" type="email"
                                value="{{ old('email') }}"
-                               required autofocus
+                               required
                                autocomplete="off"
                                class="w-full rounded-lg bg-black/40 border border-white/10 px-4 py-3 text-white
                                       placeholder:text-white/30 focus:outline-none focus:ring-2

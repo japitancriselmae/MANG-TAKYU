@@ -525,7 +525,7 @@ class PosCheckoutTest extends TestCase
             ->assertViewHas('methodFilter', 'GCash');
     }
 
-    public function test_new_order_screen_shows_service_selection_in_the_order_summary_and_cart_checkout(): void
+    public function test_new_order_screen_shows_service_selection_without_chicken_preference(): void
     {
         $cashier = $this->createCashier();
         Product::create([
@@ -538,11 +538,14 @@ class PosCheckoutTest extends TestCase
 
         $response->assertOk();
         $response->assertSeeInOrder([
-            'Step 1 — Choose a product to order',
+            'Choose a product to order',
             'Read back the order',
             'Ask: Dine-in or take-out?',
-            'Chicken preparation preference',
         ]);
+        $response->assertDontSee('Step 1');
+        $response->assertDontSee('Chicken preparation preference');
+        $response->assertDontSee('Available Cooked Chicken');
+        $response->assertDontSee('Freshly Cooked Chicken');
         $response->assertSee('Final purchase amount');
         $response->assertSee('Change');
         $response->assertSee('Suggestive sell');

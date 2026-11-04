@@ -153,9 +153,20 @@ class EmployeeController extends Controller
                 ->withErrors(['employee' => 'The Admin employee record is protected.']);
         }
 
-        if ($employee->user()->exists()) {
+        if ($employee->employee_id === auth()->user()->employee_id) {
             return back()->withErrors([
-                'employee' => 'This employee cannot be deleted because it has a user account.',
+                'employee' => 'You cannot delete your own employee record.',
+            ]);
+        }
+
+        $roleName = $employee->role?->role_name;
+
+        if (
+            $employee->user()->exists()
+            && ! in_array($roleName, ['Cashier', 'Kitchen Staff'], true)
+        ) {
+            return back()->withErrors([
+                'employee' => 'You are not authorized to delete this employee account.',
             ]);
         }
 
@@ -165,12 +176,37 @@ class EmployeeController extends Controller
             ]);
         }
 
+        if ($employee->schedules()->exists() || $employee->attendances()->exists()) {
+            return back()->withErrors([
+                'employee' => 'This employee cannot be deleted because they have schedules or attendance records.',
+            ]);
+        }
+
         DB::transaction(function () use ($employee, $activityLogger): void {
             $employee = Employee::query()
                 ->whereKey($employee->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
             $oldValues = $this->auditValues($employee);
+
+            $user = $employee->user()->lockForUpdate()->first();
+
+            if ($user) {
+                $userValues = [
+                    'name' => $user->name,
+                    'employee_id' => $employee->employee_id,
+                    'role' => $employee->role?->role_name,
+                ];
+                $user->delete();
+
+                $activityLogger->record(
+                    action: 'user.deleted',
+                    module: 'users',
+                    description: 'Employee login account deleted with employee record.',
+                    subject: $user,
+                    oldValues: $userValues,
+                );
+            }
 
             $employee->delete();
 

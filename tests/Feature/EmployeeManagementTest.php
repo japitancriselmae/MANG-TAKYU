@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ActivityLog;
 use App\Models\Employee;
 use App\Models\Role;
+use App\Models\Schedule;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -69,6 +70,94 @@ class EmployeeManagementTest extends TestCase
             'employee_id' => $employee->employee_id,
             'role' => 'Kitchen Staff',
         ], $userActivity->new_values);
+    }
+
+    public function test_manager_can_delete_an_employee_with_a_login_account(): void
+    {
+        $manager = $this->createEmployeeUser('Manager', 'Test', 'Manager', 'manager@example.com');
+        $employee = $this->createEmployee('Cashier', 'Jamie', 'Cashier');
+        $user = User::create([
+            'name' => 'Jamie Cashier',
+            'email' => 'jamie@example.com',
+            'password' => 'password123',
+            'employee_id' => $employee->employee_id,
+        ]);
+        $this->actingAs($manager);
+
+        $this->get(route('employees.index'))
+            ->assertSee('Delete this employee and their login account?', false);
+
+        $response = $this->delete(route('employees.destroy', $employee));
+
+        $response->assertRedirect(route('employees.index'))
+            ->assertSessionHas('success', 'Employee deleted successfully.');
+        $this->assertDatabaseMissing('employees', ['employee_id' => $employee->employee_id]);
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'user.deleted',
+            'subject_type' => User::class,
+            'subject_id' => (string) $user->id,
+            'user_id' => $manager->id,
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'employee.deleted',
+            'subject_type' => Employee::class,
+            'subject_id' => (string) $employee->employee_id,
+            'user_id' => $manager->id,
+        ]);
+    }
+
+    public function test_manager_cannot_delete_their_own_employee_or_login_account(): void
+    {
+        $manager = $this->createEmployeeUser('Manager', 'Test', 'Manager', 'manager@example.com');
+        $this->actingAs($manager);
+
+        $response = $this->delete(route('employees.destroy', $manager->employee));
+
+        $response->assertRedirect()
+            ->assertSessionHasErrors([
+                'employee' => 'You cannot delete your own employee record.',
+            ]);
+        $this->assertDatabaseHas('employees', ['employee_id' => $manager->employee_id]);
+        $this->assertDatabaseHas('users', ['id' => $manager->id]);
+    }
+
+    public function test_manager_cannot_delete_another_managers_login_account(): void
+    {
+        $manager = $this->createEmployeeUser('Manager', 'Test', 'Manager', 'manager@example.com');
+        $otherManager = $this->createEmployeeUser('Manager', 'Other', 'Manager', 'other@example.com');
+        $this->actingAs($manager);
+
+        $response = $this->delete(route('employees.destroy', $otherManager->employee));
+
+        $response->assertRedirect()
+            ->assertSessionHasErrors([
+                'employee' => 'You are not authorized to delete this employee account.',
+            ]);
+        $this->assertDatabaseHas('employees', ['employee_id' => $otherManager->employee_id]);
+        $this->assertDatabaseHas('users', ['id' => $otherManager->id]);
+    }
+
+    public function test_manager_cannot_delete_an_employee_with_schedules(): void
+    {
+        $manager = $this->createEmployeeUser('Manager', 'Test', 'Manager', 'manager@example.com');
+        $employee = $this->createEmployee('Cashier', 'Jamie', 'Cashier');
+        Schedule::create([
+            'employee_id' => $employee->employee_id,
+            'schedule_date' => '2026-11-05',
+            'start_time' => '09:00:00',
+            'end_time' => '17:00:00',
+            'status' => 'Active',
+        ]);
+        $this->actingAs($manager);
+
+        $response = $this->delete(route('employees.destroy', $employee));
+
+        $response->assertRedirect()
+            ->assertSessionHasErrors([
+                'employee' => 'This employee cannot be deleted because they have schedules or attendance records.',
+            ]);
+        $this->assertDatabaseHas('employees', ['employee_id' => $employee->employee_id]);
     }
 
     public function test_manager_employee_creation_and_update_record_auditable_values(): void

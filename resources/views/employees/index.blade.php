@@ -127,14 +127,16 @@
                                             Edit
                                         </a>
 
-                                        <form action="{{ route('employees.destroy', $employee) }}" method="POST"
-                                              onsubmit="return confirm('Delete this employee?');">
-                                            @csrf @method('DELETE')
-                                            <button type="submit"
-                                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition">
-                                                Delete
-                                            </button>
-                                        </form>
+                                        @if ($employee->employee_id !== auth()->user()->employee_id)
+                                            <form action="{{ route('employees.destroy', $employee) }}" method="POST"
+                                                  onsubmit="return confirm('{{ $employee->user ? 'Delete this employee and their login account?' : 'Delete this employee?' }}');">
+                                                @csrf @method('DELETE')
+                                                <button type="submit"
+                                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition">
+                                                    Delete
+                                                </button>
+                                            </form>
+                                        @endif
                                     @endif
 
                                     @if ($isAdmin)

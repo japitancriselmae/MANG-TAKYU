@@ -96,7 +96,9 @@ class OrderConfirmationFlowTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Order Completed');
-        $response->assertSee('Available Cooked Chicken');
+        $response->assertDontSee('Chicken preparation preference');
+        $response->assertDontSee('Available Cooked Chicken');
+        $response->assertDontSee('Freshly Cooked Chicken');
         $response->assertSee('Create Another Order');
         $response->assertSee('The stock was deducted and the payment was recorded successfully.');
         $response->assertDontSee('Order Waiting for Fresh Chicken');
@@ -133,7 +135,8 @@ class OrderConfirmationFlowTest extends TestCase
 
         $receipt->assertOk();
         $receipt->assertSee('Order Waiting for Fresh Chicken');
-        $receipt->assertSee('Freshly Cooked Chicken');
+        $receipt->assertDontSee('Chicken preparation preference');
+        $receipt->assertDontSee('Freshly Cooked Chicken');
         $receipt->assertSee('Create Another Order');
         $receipt->assertDontSee('Order Completed');
     }
